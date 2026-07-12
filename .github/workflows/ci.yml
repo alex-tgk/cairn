@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install development dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type-check and test
+        run: bun run check
+
+      - name: Build the standalone executable
+        run: bun run build
+
+      - name: Smoke-test the executable
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            ./dist/cairn.exe --version
+          else
+            ./dist/cairn --version
+          fi
+
+      - name: Upload the executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: cairn-${{ runner.os }}-${{ runner.arch }}
+          path: dist/cairn*
