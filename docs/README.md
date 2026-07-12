@@ -10,6 +10,7 @@ Start with the product boundary, then follow the architecture and roadmap into i
 | [Architecture](architecture.md) | Defines domains, storage, identity, and implemented boundaries. |
 | [Roadmap](roadmap.md) | Orders the implementation slices. |
 | [Distribution](distribution.md) | Defines binaries, CI, releases, and Homebrew delivery. |
+| [Project state](project-state.md) | Gives every agent the current implementation handoff. |
 
 ## Decision records
 
