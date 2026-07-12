@@ -1,37 +1,60 @@
 # Cairn
 
-Cairn is a planned local-first memory engine for AI agents. Its core purpose is to let one agent leave durable, structured context that another agent can recover later without requiring embeddings, an inference model, or a network service.
+Cairn is a local-first work, memory, and context system for AI coding agents. Phase 1 replaces the essential workflows currently split across Beads, Engram, and `agents-context` without requiring embeddings, inference, or a daemon.
 
-The project is currently in product definition and architecture planning. No implementation stack has been selected yet.
+The first executable foundation is implemented: Cairn can create stable project identity, register renamed or cloned workspaces in SQLite, report project status, verify database integrity and FTS5, and compile into a standalone executable.
 
-## Start here
+## Quick path
 
-1. Read the [product brief](docs/product-brief.md) for the problem, users, scope, and success criteria.
-2. Read the [architecture direction](docs/architecture.md) for system boundaries and the proposed walking skeleton.
-3. Read the [roadmap](docs/roadmap.md) for decision gates and delivery milestones.
-4. Use the [documentation index](docs/README.md) to find accepted decisions.
+```sh
+bun install
+bun run check
+bun run build
+
+./dist/cairn --version
+./dist/cairn init /path/to/project
+./dist/cairn status /path/to/project
+./dist/cairn doctor
+```
+
+Use `CAIRN_DATA_DIR` to override the platform data directory during development or testing.
 
 ## Accepted direction
 
 | Topic | Decision |
 | --- | --- |
-| Name | Cairn is both the product and repository name. |
-| Initial boundary | Build the durable memory capability first; broader project and code context comes later. |
-| Runtime dependency | Core operations must work without embeddings or an inference model. |
-| Operating model | Local-first, self-contained, deterministic, and explainable. |
+| Phase 1 | Replace essential Beads, Engram, and `agents-context` workflows |
+| Storage | One user-level SQLite database with FTS5 |
+| Identity | Stable project UUID plus separate physical workspace registrations |
+| Runtime | Strict TypeScript on Bun with `bun:sqlite` |
+| Distribution | Standalone platform executables and a custom Homebrew tap |
+| Model dependency | No required embeddings or inference |
 
-## Initial outcome
+## Implementation status
 
-The first usable release should prove one complete path:
+| Capability | Status |
+| --- | --- |
+| Project manifest and workspace identity | Implemented |
+| SQLite migrations, WAL, foreign keys, and FTS5 | Implemented |
+| `init`, `status`, `doctor`, JSON output | Implemented |
+| macOS, Linux, and Windows CI scaffold | Implemented |
+| Work tracking | Next slice |
+| Durable memory | Planned |
+| Local context indexing and unified search | Planned |
+| Beads and Engram migration | Planned |
 
-> An agent saves a structured memory, a later process retrieves it using deterministic criteria, and the result explains where it came from.
+## Documentation
 
-## Initial non-goals
+- [Product brief](docs/product-brief.md)
+- [Architecture](docs/architecture.md)
+- [Roadmap](docs/roadmap.md)
+- [Distribution](docs/distribution.md)
+- [Decision records](docs/README.md#decision-records)
 
-- Semantic or graph retrieval powered by a model
-- Repository indexing and code intelligence
-- A graphical interface
-- Multi-user or hosted operation
+## Non-goals for Phase 1
+
+- Embeddings, vector search, or model-generated memory
+- Cloud accounts or multi-user synchronization
+- Database branching and merge
+- Graphical interface
 - Replacing Serena or codebase-memory
-
-These boundaries protect the first release from inheriting the operational cost and failure modes of the current multi-service stack.

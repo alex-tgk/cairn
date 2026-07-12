@@ -1,125 +1,60 @@
-# Prove durable memory before expanding into context
+# Deliver Cairn as verified vertical slices
 
-The roadmap is ordered by risk reduction, not dates. Each milestone produces a usable or reviewable outcome and has an explicit exit condition.
+The roadmap is ordered by dependency and risk reduction rather than dates.
 
 ## Delivery sequence
 
-| Milestone | Outcome | Status |
+| Slice | Outcome | Status |
 | --- | --- | --- |
-| 0. Product and architecture foundation | Accepted scope, decision gates, and implementation-ready contracts | In progress |
-| 1. Walking skeleton | Save and recover one durable memory end to end | Planned |
-| 2. Deterministic retrieval | Filter, search, and inspect chronology predictably | Planned |
-| 3. Engram transition | Preserve and verify existing durable memory | Planned |
-| 4. Operational readiness | Safe daily use by multiple local agents | Planned |
-| 5. Context exploration | Re-evaluate broader context without weakening the core | Deferred |
+| 0. Product and architecture | Scope and durable decisions | Complete |
+| 1. Project and SQLite foundation | Rename-safe identity and executable CLI | Implemented locally |
+| 2. Work tracking | Essential Beads workflows | Next |
+| 3. Durable memory | Essential Engram workflows | Planned |
+| 4. Context and unified search | Essential `agents-context` workflows | Planned |
+| 5. Migration and operations | Safe cutover, backup, and recovery | Planned |
+| 6. Distribution | Signed releases and Homebrew tap | Planned |
 
-## Milestone 0: product and architecture foundation
+## Slice 1 exit criteria
 
-### Deliverables
+- [x] Strict TypeScript and Bun project
+- [x] Versioned SQLite migrations
+- [x] Stable project manifest with runtime validation
+- [x] Separate project and workspace identity
+- [x] Directory-move behavior covered by tests
+- [x] WAL, foreign keys, busy timeout, integrity, and FTS5 checks
+- [x] CLI and JSON boundaries
+- [x] Standalone local executable
+- [x] macOS, Linux, and Windows CI scaffold
 
-- Product brief, architecture direction, roadmap, and accepted ADRs
-- Inventory of Engram behaviors and data that Cairn must preserve
-- Runtime and persistence ADRs
-- Versioned record schema proposal
-- CLI command and JSON output contract
-- Test strategy and walking-skeleton acceptance scenarios
+## Slice 2: work tracking
 
-### Exit criteria
+Implement the minimum Beads-compatible workflow:
 
-- [ ] Every Phase 1 behavior is either required, deferred, or rejected.
-- [ ] The runtime and persistence choices satisfy offline, model-free operation.
-- [ ] Record identity, scope, project identity, topic evolution, and provenance are defined.
-- [ ] The first vertical slice can be implemented without unresolved product choices.
+1. Work-item schema and audit events
+2. Create, show, list, update, claim, close, and reopen
+3. Parent/child and blocking dependencies
+4. Ready and blocked queries with explanation
+5. Labels, comments, notes, priorities, and types
+6. Deterministic JSON contracts and acceptance tests
 
-## Milestone 1: walking skeleton
+Exit when an agent can capture work, identify an unblocked next item, explain why it is ready, and close it with history preserved.
 
-### Deliverables
+## Slice 3: durable memory
 
-- Project toolchain and automated tests
-- Domain model for one valid memory record
-- Repository port and first local persistence adapter
-- `save` and `get` workflows
-- Human-readable and JSON CLI output
-- Restart persistence test
+Implement memory types, scopes, topics, sessions, relations, search, timeline context, provenance, and session summaries. Exit when one process saves a memory and a later process recovers it deterministically.
 
-### Exit criteria
+## Slice 4: context and unified search
 
-- [ ] A record saved by one process is recovered by another.
-- [ ] Invalid records fail before persistence with actionable errors.
-- [ ] Core tests run without network access or model services.
-- [ ] Domain tests do not depend on the persistence implementation.
+Implement source configuration, safe file discovery, incremental hashing, document versions, FTS ranking, snippets, project primer, and a typed cross-domain search projection.
 
-## Milestone 2: deterministic retrieval
+## Slice 5: migration and operations
 
-### Deliverables
+Implement read-only Beads and Engram inventories, idempotent dry-run imports, count/checksum reports, backup, restore, export, and recovery guidance.
 
-- Scope, project, topic, type, and time filters
-- Timeline neighbors around a record
-- Deterministic lexical search
-- Explicit ranking and tie-breaking rules
-- Result provenance and match explanations
-- Backup and integrity-check commands
+## Slice 6: distribution
 
-### Exit criteria
+Validate release artifacts on supported platforms, add signing and checksums, create a versioned GitHub release, then publish the first formula and bottle through the custom Homebrew tap.
 
-- [ ] Repeated queries over the same store return the same ordered results.
-- [ ] Project and scope isolation is covered by acceptance tests.
-- [ ] Search behavior is documented well enough to reproduce manually.
-- [ ] Interrupted writes and concurrent access do not corrupt the store.
+## Review rule
 
-## Milestone 3: Engram transition
-
-### Deliverables
-
-- Read-only inventory of the current Engram database and behaviors
-- Versioned importer or compatibility adapter
-- Dry-run report with source counts, destination counts, warnings, and rejected records
-- Migration verification fixtures
-- Cutover and rollback runbook
-
-### Exit criteria
-
-- [ ] Migration is repeatable and does not mutate the source store.
-- [ ] Record counts and checksums are explainable.
-- [ ] Topic, scope, type, chronology, and provenance survive migration.
-- [ ] Existing agent workflows have a documented compatibility path.
-
-## Milestone 4: operational readiness
-
-### Deliverables
-
-- Installation and upgrade workflow
-- Shell completion and agent-integration examples
-- Locking, recovery, backup, and restore behavior
-- Performance budgets using a representative local dataset
-- Secret detection or redaction policy
-- Deprecation plan for replaced memory commands
-
-### Exit criteria
-
-- [ ] At least two agent environments use the same stable command contract.
-- [ ] Upgrade, backup, restore, and corruption recovery are tested.
-- [ ] Failures identify corrective actions without exposing stored secrets.
-- [ ] Cairn can become the durable-memory source of truth.
-
-## Milestone 5: context exploration
-
-This milestone is intentionally deferred until the memory core is trusted.
-
-Questions to answer before expanding scope:
-
-1. Which `agents-context` workflows are genuinely memory workflows versus repository indexing?
-2. Can deterministic full-text and metadata indexing cover enough context use cases without embeddings?
-3. Which LightRAG outcomes provide unique value, and can they remain optional?
-4. Should code intelligence remain federated through Serena and codebase-memory?
-
-No context capability may make embeddings or inference mandatory for core memory operations.
-
-## Immediate next work unit
-
-Document Engram parity before selecting implementation technology:
-
-1. Inventory its command surface and database schema read-only.
-2. Identify behaviors currently depended on by Codex, Copilot CLI, and local scripts.
-3. Separate required product behavior from Engram-specific implementation details.
-4. Turn the result into a compatibility matrix and Phase 1 acceptance scenarios.
+Each slice must include its domain behavior, database migration, CLI/JSON contract, tests, user documentation, and rollback or migration implications in the same work unit.

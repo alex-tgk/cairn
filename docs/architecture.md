@@ -1,124 +1,106 @@
-# Keep the memory core independent from interfaces and infrastructure
+# Separate work, memory, and context behind one local platform
 
-Cairn should begin as a small ports-and-adapters system organized around complete memory workflows. This direction preserves the accepted deterministic core while leaving runtime, database, and interface technologies replaceable.
+Cairn uses vertical domain boundaries with shared project identity, SQLite infrastructure, and a unified search projection. The domains remain separate even though they share one physical database.
 
-The architecture below is **proposed**, except for the accepted system boundaries called out explicitly.
-
-## System boundary
+## System shape
 
 ```mermaid
-flowchart LR
-    Agent[AI agent or human] --> Interface[CLI or future adapter]
-    Interface --> Core[Cairn memory core]
-    Core --> Store[(Local durable store)]
-    Core --> Search[Deterministic query engine]
+flowchart TD
+    Agent[Agent or human] --> CLI[Cairn CLI and JSON contract]
+    CLI --> Project[Project and workspace application]
+    CLI --> Work[Work application]
+    CLI --> Memory[Memory application]
+    CLI --> Context[Context indexing application]
+    CLI --> Search[Unified search application]
 
-    Importer[Engram importer] --> Core
-    Context[Future context capability] -. later .-> Core
-    Models[Embeddings or inference] -. not required .-> Context
-    CodeIntel[Serena and codebase-memory] -. remains separate .-> Agent
+    Project --> Ports[Domain-owned storage ports]
+    Work --> Ports
+    Memory --> Ports
+    Context --> Ports
+    Search --> Ports
+
+    Ports --> SQLite[(User-level SQLite and FTS5)]
+    Manifest[.cairn/project.toml] --> Project
 ```
 
-### Accepted boundaries
+Domain and application code must not import `bun:sqlite`. SQLite stays behind infrastructure adapters.
 
-- Core capture and retrieval cannot require embeddings, inference, or network access.
-- Durable memory is the first product boundary.
-- Broader project context is a later phase.
-- Serena and codebase-memory remain separate code-intelligence tools.
+## Project identity
 
-## Current stack transition
-
-| Current component | Current responsibility | Cairn direction |
-| --- | --- | --- |
-| Engram | Durable observations, topics, scopes, timelines, and session summaries | Primary Phase 1 behavior and migration source |
-| `agents-context` | Fast broad retrieval across local sources | Deferred context capability; not part of the first core |
-| LightRAG | Curated relationship and graph synthesis | Not a core dependency; reconsider only after deterministic memory succeeds |
-| `agents-rag` | Legacy SQLite RAG fallback | No direct replacement commitment in Phase 1 |
-| Ollama | Embedding and inference infrastructure | Must not be required for core Cairn workflows |
-| Serena | Language-server code navigation and refactoring | Out of scope |
-| codebase-memory | Persistent code graph and impact analysis | Out of scope |
-
-## Proposed logical architecture
+Project identity is stable; directory paths are observations.
 
 ```text
-Interfaces
-  CLI commands and stable JSON contracts
-        |
-Application
-  SaveMemory, GetMemory, SearchMemories, ShowTimeline, ImportMemories
-        |
-Domain
-  MemoryRecord, Scope, Topic, MemoryType, Query, Provenance
-        |
-Ports
-  MemoryRepository, SearchIndex, Clock, IdGenerator, ImportSource
-        |
-Adapters
-  Local persistence, deterministic text index, Engram import, console output
+Project UUID
+  ├── workspace: /old/path/cairn
+  ├── workspace: /new/path/cairn
+  └── workspace: /another/git-worktree
 ```
 
-Dependencies point inward: interfaces and adapters depend on application and domain contracts. The domain does not know which database, runtime, or CLI framework is selected.
+Each repository contains a tracked `.cairn/project.toml` with a version, project UUID, and display name. Every command resolves that manifest and registers the current physical workspace path. Work and memory reference `project_id`; indexed files reference `workspace_id` plus relative path and content hash.
 
-## Proposed domain vocabulary
+## Storage
 
-| Concept | Responsibility |
+The platform data directory follows operating-system conventions and can be overridden with `CAIRN_DATA_DIR`.
+
+| Platform | Default |
 | --- | --- |
-| Memory record | An immutable durable observation with stable identity and provenance |
-| Scope | Separates personal memory from project-specific memory |
-| Project key | Identifies the project boundary without depending only on the current path |
-| Topic | Connects evolving observations about one durable subject |
-| Memory type | Classifies intent such as decision, discovery, bug fix, or session summary |
-| Query | Expresses filters, text terms, ordering, and limits deterministically |
-| Provenance | Records who or what created/imported the memory and from where |
+| macOS | `~/Library/Application Support/Cairn` |
+| Linux | `$XDG_DATA_HOME/cairn` or `~/.local/share/cairn` |
+| Windows | `%LOCALAPPDATA%\Cairn` |
 
-Whether records are strictly immutable or allow controlled revision is still open. The persistence model must not decide that policy accidentally.
+The current schema establishes:
 
-## First walking skeleton
+- versioned migrations;
+- projects and workspaces;
+- a shared search projection and external-content FTS5 table;
+- WAL mode, foreign keys, a busy timeout, and normal synchronization;
+- restricted database and data-directory permissions where supported.
 
-Build one end-to-end behavior before adding the full command set:
+Planned migrations add separate work, memory, context-source, audit, and import tables.
 
-1. Create a structured memory through the CLI.
-2. Validate it in the domain.
-3. Persist it through a repository port.
-4. Retrieve it by stable ID and exact project/topic filters.
-5. Return both human-readable and JSON representations.
-6. Restart the process and prove the same record is still available.
+## Domain boundaries
 
-This slice proves the command boundary, domain model, persistence contract, serialization contract, and test strategy without requiring relevance ranking or migration complexity.
-
-## Query behavior
-
-Phase 1 search should be explainable and testable. A proposed order of capability is:
-
-1. Exact identity lookup
-2. Exact scope, project, topic, and type filters
-3. Time-range filtering and timeline neighbors
-4. Deterministic lexical text search
-5. Documented ranking and tie-breaking
-
-Every search result should be able to report which filters and text terms matched. Optional semantic retrieval, if ever introduced, belongs behind a separate adapter and cannot redefine core correctness.
-
-## Quality attributes
-
-| Attribute | Required evidence |
+| Domain | Owns |
 | --- | --- |
-| Determinism | Repeatable query fixtures with stable ordering |
-| Durability | Restart and interrupted-write integration tests |
-| Isolation | Cross-project and personal/project scope tests |
-| Explainability | Match metadata and provenance in query results |
-| Portability | Clean setup on a machine without Ollama or network access |
-| Evolvability | Versioned schemas and migration tests |
-| Scriptability | Stable JSON contracts and exit codes |
+| Project | Identity, manifests, workspace registration, scopes |
+| Work | Work items, dependencies, comments, status, history |
+| Memory | Sessions, memories, topics, relations, chronology |
+| Context | Sources, document versions, hashes, index policy |
+| Search | Read-only projection across typed domain records |
+| Operations | Migrations, backup, restore, integrity, import/export |
 
-## Architecture decision gates
+Do not introduce a generic writable `items` table. Unified search is a projection, not the source model.
 
-Before implementation, record ADRs for:
+## Current executable slice
 
-1. Language and runtime
-2. Persistence engine and transaction model
-3. Record mutability and topic evolution
-4. Project identity rules
-5. Query grammar, ranking, and tie-breaking
-6. CLI and JSON compatibility contract
-7. Engram migration strategy
-8. Secret handling, redaction, and backup policy
+The first slice implements:
+
+1. Platform data-directory resolution
+2. Runtime-validated TOML project manifests
+3. Git-root discovery
+4. SQLite schema migration
+5. Rename-safe project/workspace registration
+6. `init`, `status`, `doctor`, `--help`, and `--version`
+7. Human-readable and JSON output
+8. Strict type checking, unit/integration tests, and standalone compilation
+
+## Next vertical slices
+
+1. Work capture and ready/blocked dependency queries
+2. Durable memory capture, topics, context, and timelines
+3. Incremental source indexing and FTS search
+4. Unified typed search projection
+5. Beads and Engram migration
+6. Backup, restore, release packaging, and Homebrew bottles
+
+## Quality rules
+
+| Attribute | Evidence |
+| --- | --- |
+| Determinism | Stable query ordering and concrete fixtures |
+| Durability | Transaction, restart, and interrupted-write tests |
+| Isolation | Project, workspace, and scope boundary tests |
+| Explainability | Provenance and match metadata in results |
+| Portability | Native CI and compiled-binary smoke tests |
+| Evolvability | Ordered migrations and domain-owned ports |
+| Scriptability | Versioned JSON contracts and exit codes |
