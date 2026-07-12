@@ -53,6 +53,6 @@ Chat history and agent-specific memory are not project sources of truth.
 
 ## Current implementation boundary
 
-Implemented: project manifests, platform data directories, SQLite migrations 1-2, project/workspace registration, FTS5 health, `init`, `status`, `doctor`, `work create`, `work show`, deterministic project-scoped `work list`, JSON output, compiled builds, and cross-platform CI configuration.
+Implemented: project manifests, platform data directories, SQLite migrations 1-2, project/workspace registration, FTS5 health, `init`, `status`, `doctor`, work capture/list/show, claim/close/reopen transitions, audit history, JSON output, compiled builds, and cross-platform CI configuration.
 
-Next: work lifecycle and audit history, followed by dependency-based ready/blocked queries as defined in [docs/roadmap.md](docs/roadmap.md).
+Next: work-item metadata updates, followed by dependency-based ready/blocked queries as defined in [docs/roadmap.md](docs/roadmap.md).

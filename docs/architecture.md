@@ -83,7 +83,7 @@ The first slice implements:
 6. `init`, `status`, `doctor`, `--help`, and `--version`
 7. Human-readable and JSON output
 8. Strict type checking, unit/integration tests, and standalone compilation
-9. Work-item capture, project-isolated lookup, deterministic listing, audit creation, and search projection
+9. Work-item capture, project-isolated lookup, deterministic listing, lifecycle transitions, audit history, and search projection
 
 ## Next vertical slices
 

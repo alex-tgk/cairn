@@ -15,8 +15,12 @@ import {
 } from "./storage/database.ts";
 import { parseWorkItemType } from "./work/work-item.ts";
 import {
+  claimWork,
+  closeWork,
   createWork,
   listWork,
+  listWorkHistory,
+  reopenWork,
   showWork,
 } from "./work/work-service.ts";
 
@@ -30,6 +34,10 @@ Usage:
                     [--type <type>] [--assignee <name>] [--path <path>] [--json]
   cairn work show <id> [--path <path>] [--json]
   cairn work list [--path <path>] [--json]
+  cairn work claim <id> --assignee <name> [--path <path>] [--json]
+  cairn work close <id> [--path <path>] [--json]
+  cairn work reopen <id> [--path <path>] [--json]
+  cairn work history <id> [--path <path>] [--json]
   cairn --version
   cairn --help
 `;
@@ -87,6 +95,21 @@ function printWorkList(
   }
 }
 
+function printWorkHistory(
+  events: ReturnType<typeof listWorkHistory>,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(events, null, 2));
+    return;
+  }
+  for (const event of events) {
+    console.log(
+      `${event.createdAt}: ${event.eventType} ${JSON.stringify(event.payload)}`,
+    );
+  }
+}
+
 function runWorkCommand(arguments_: readonly string[], json: boolean): number {
   const [action, primary] = arguments_;
   const path = optionValue(arguments_, "--path") ?? process.cwd();
@@ -115,6 +138,33 @@ function runWorkCommand(arguments_: readonly string[], json: boolean): number {
 
   if (action === "list") {
     printWorkList(listWork({ path }), json);
+    return 0;
+  }
+
+  if (action === "claim") {
+    printResult(
+      claimWork({
+        assignee: optionValue(arguments_, "--assignee") ?? "",
+        id: primary ?? "",
+        path,
+      }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "close") {
+    printResult(closeWork({ id: primary ?? "", path }), json);
+    return 0;
+  }
+
+  if (action === "reopen") {
+    printResult(reopenWork({ id: primary ?? "", path }), json);
+    return 0;
+  }
+
+  if (action === "history") {
+    printWorkHistory(listWorkHistory({ id: primary ?? "", path }), json);
     return 0;
   }
 

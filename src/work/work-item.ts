@@ -8,9 +8,17 @@ export const WORK_ITEM_TYPES = [
 
 export type WorkItemStatus = "open" | "in_progress" | "closed";
 export type WorkItemType = (typeof WORK_ITEM_TYPES)[number];
+export type WorkItemEventType = "created" | "claimed" | "closed" | "reopened";
+export type WorkItemEventPayload = Readonly<
+  Record<string, string | number | null>
+>;
 
 export class WorkItemValidationError extends Error {
   override readonly name = "WorkItemValidationError";
+}
+
+export class WorkItemTransitionError extends Error {
+  override readonly name = "WorkItemTransitionError";
 }
 
 export class WorkItemId {
@@ -92,6 +100,23 @@ export type WorkItem = Readonly<{
   updatedAt: string;
 }>;
 
+export type WorkItemEventDraft = Readonly<{
+  createdAt: string;
+  eventType: WorkItemEventType;
+  payload: WorkItemEventPayload;
+}>;
+
+export type WorkItemEvent = WorkItemEventDraft &
+  Readonly<{
+    id: number;
+    workItemId: string;
+  }>;
+
+export type WorkItemTransition = Readonly<{
+  event: WorkItemEventDraft;
+  item: WorkItem;
+}>;
+
 type CreateWorkItemInput = Readonly<{
   assignee?: string | undefined;
   description?: string | undefined;
@@ -122,4 +147,66 @@ export function createWorkItem(input: CreateWorkItemInput): WorkItem {
 
 export function restoreWorkItem(item: WorkItem): WorkItem {
   return item;
+}
+
+export function claimWorkItem(
+  item: WorkItem,
+  assignee: string,
+  now: string,
+): WorkItemTransition {
+  if (item.status === "closed") {
+    throw new WorkItemTransitionError("Closed work must be reopened before claim");
+  }
+  const normalizedAssignee = assignee.trim();
+  if (normalizedAssignee.length === 0) {
+    throw new WorkItemValidationError("Work item assignee must not be empty");
+  }
+  return {
+    event: {
+      createdAt: now,
+      eventType: "claimed",
+      payload: { assignee: normalizedAssignee, status: "in_progress" },
+    },
+    item: {
+      ...item,
+      assignee: normalizedAssignee,
+      claimedAt: now,
+      status: "in_progress",
+      updatedAt: now,
+    },
+  };
+}
+
+export function closeWorkItem(
+  item: WorkItem,
+  now: string,
+): WorkItemTransition {
+  if (item.status === "closed") {
+    throw new WorkItemTransitionError("Work item is already closed");
+  }
+  return {
+    event: {
+      createdAt: now,
+      eventType: "closed",
+      payload: { status: "closed" },
+    },
+    item: { ...item, closedAt: now, status: "closed", updatedAt: now },
+  };
+}
+
+export function reopenWorkItem(
+  item: WorkItem,
+  now: string,
+): WorkItemTransition {
+  if (item.status !== "closed") {
+    throw new WorkItemTransitionError("Only closed work can be reopened");
+  }
+  return {
+    event: {
+      createdAt: now,
+      eventType: "reopened",
+      payload: { status: "open" },
+    },
+    item: { ...item, closedAt: null, status: "open", updatedAt: now },
+  };
 }

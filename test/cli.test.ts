@@ -161,6 +161,60 @@ describe("Cairn CLI", () => {
     );
   });
 
+  test("claims, closes, reopens, and reports work history", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+    const created = runCli(
+      ["work", "create", "Lifecycle work", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    const id = (JSON.parse(created.stdout) as { id: string }).id;
+
+    const claimed = runCli(
+      [
+        "work",
+        "claim",
+        id,
+        "--assignee",
+        "agent-codex",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    const closed = runCli(
+      ["work", "close", id, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    const reopened = runCli(
+      ["work", "reopen", id, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    const history = runCli(
+      ["work", "history", id, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+
+    expect(JSON.parse(claimed.stdout)).toMatchObject({
+      assignee: "agent-codex",
+      status: "in_progress",
+    });
+    expect(JSON.parse(closed.stdout)).toMatchObject({ status: "closed" });
+    expect(JSON.parse(reopened.stdout)).toMatchObject({
+      assignee: "agent-codex",
+      closedAt: null,
+      status: "open",
+    });
+    expect(
+      (JSON.parse(history.stdout) as readonly { eventType: string }[]).map(
+        ({ eventType }) => eventType,
+      ),
+    ).toEqual(["created", "claimed", "closed", "reopened"]);
+  });
+
   test("returns a non-zero result outside a Cairn project", () => {
     const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
     const workspace = createTemporaryDirectory("cairn-cli-workspace-");

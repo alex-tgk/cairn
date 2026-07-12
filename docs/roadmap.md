@@ -44,7 +44,8 @@ Current progress:
 - [x] Migration 2 work-item and audit-event schema
 - [x] Create, show, and deterministic project-scoped list
 - [x] Creation audit event and unified-search projection
-- [ ] Update, claim, close, and reopen
+- [x] Claim, close, and reopen with audit history
+- [ ] Work-item metadata updates
 - [ ] Parent/child and blocking dependencies
 - [ ] Ready and blocked explanations
 - [ ] Labels, comments, and notes

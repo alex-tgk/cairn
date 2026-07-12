@@ -29,11 +29,12 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Clean reinstall through the published `alex-tgk/tap/cairn` path with passing version and database-health smoke tests
 - Migration 2 work-item and audit-event storage
 - `work create`, `work show`, and deterministic project-scoped `work list`
-- Creation audit events and work-item search projections
+- `work claim`, `work close`, `work reopen`, and `work history`
+- Transactional audit events and synchronized work-item search projections
 
 ## Not implemented
 
-- Work update, claim, close, reopen, and history commands
+- Work-item metadata updates
 - Dependencies, ready/blocked queries, comments, labels, or notes
 - Durable memory, sessions, topics, relations, or timelines
 - Context source discovery, incremental indexing, or user-facing search
@@ -45,7 +46,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 
 Continue essential work tracking:
 
-1. Update, claim, close, and reopen use cases with preserved audit history
+1. Work-item metadata updates with preserved audit history
 2. Parent/child and blocking dependencies
 3. Ready and blocked queries with explanations
 4. Labels, comments, and notes

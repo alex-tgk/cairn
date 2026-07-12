@@ -8,6 +8,7 @@ import {
   registerProjectWorkspace,
 } from "../src/storage/database.ts";
 import {
+  claimWorkItem,
   createWorkItem,
   WorkItemId,
 } from "../src/work/work-item.ts";
@@ -124,6 +125,54 @@ describe("SQLite work-item repository", () => {
     expect(
       repository.findById(PROJECT_ID, WorkItemId.from("work-other")),
     ).toBeNull();
+    database.close();
+  });
+
+  test("persists lifecycle changes and returns their audit history", () => {
+    const database = createDatabase();
+    const repository = new SqliteWorkItemRepository(database);
+    const item = createWorkItem({
+      id: WorkItemId.from("work-lifecycle"),
+      now: "2026-07-12T13:00:00.000Z",
+      projectId: PROJECT_ID,
+      title: "Preserve lifecycle history",
+    });
+    repository.create(item);
+    const claimed = claimWorkItem(
+      item,
+      "agent-codex",
+      "2026-07-12T14:00:00.000Z",
+    );
+
+    repository.applyTransition(claimed);
+
+    expect(repository.findById(PROJECT_ID, item.id)).toMatchObject({
+      assignee: "agent-codex",
+      status: "in_progress",
+    });
+    expect(repository.listEvents(PROJECT_ID, item.id)).toEqual([
+      {
+        createdAt: "2026-07-12T13:00:00.000Z",
+        eventType: "created",
+        id: 1,
+        payload: { priority: 2, status: "open", type: "task" },
+        workItemId: "work-lifecycle",
+      },
+      {
+        createdAt: "2026-07-12T14:00:00.000Z",
+        eventType: "claimed",
+        id: 2,
+        payload: { assignee: "agent-codex", status: "in_progress" },
+        workItemId: "work-lifecycle",
+      },
+    ]);
+    expect(
+      database
+        .query<{ tags: string }, [string]>(
+          "SELECT tags FROM search_entries WHERE entity_id = ?",
+        )
+        .get(item.id.toString()),
+    ).toEqual({ tags: "task in_progress p2" });
     database.close();
   });
 });

@@ -4,12 +4,18 @@ import { getProjectStatus } from "../project/project-service.ts";
 import { openCairnDatabase } from "../storage/database.ts";
 import { SqliteWorkItemRepository } from "./sqlite-work-item-repository.ts";
 import {
+  claimWorkItem,
+  closeWorkItem,
   createWorkItem,
+  reopenWorkItem,
   WorkItemId,
   type WorkItem,
+  type WorkItemEvent,
   type WorkItemStatus,
+  type WorkItemTransition,
   type WorkItemType,
 } from "./work-item.ts";
+import type { WorkItemRepository } from "./work-item-repository.ts";
 
 export type WorkItemView = Readonly<{
   assignee: string | null;
@@ -43,6 +49,9 @@ type CreateWorkOptions = WorkContextOptions &
   }>;
 
 type ShowWorkOptions = WorkContextOptions & Readonly<{ id: string }>;
+type TransitionWorkOptions = ShowWorkOptions &
+  Readonly<{ now?: (() => string) | undefined }>;
+type ClaimWorkOptions = TransitionWorkOptions & Readonly<{ assignee: string }>;
 
 export class WorkItemNotFoundError extends Error {
   override readonly name = "WorkItemNotFoundError";
@@ -75,58 +84,101 @@ function toWorkItemView(item: WorkItem): WorkItemView {
   };
 }
 
-export function createWork(options: CreateWorkOptions): WorkItemView {
+function withWorkRepository<Result>(
+  options: WorkContextOptions,
+  action: (repository: WorkItemRepository, projectId: string) => Result,
+): Result {
   const project = resolveWorkProject(options);
   const database = openCairnDatabase(project.databasePath);
-  const repository = new SqliteWorkItemRepository(database);
-
   try {
+    return action(new SqliteWorkItemRepository(database), project.projectId);
+  } finally {
+    database.close();
+  }
+}
+
+function requireWorkItem(
+  repository: WorkItemRepository,
+  projectId: string,
+  id: WorkItemId,
+): WorkItem {
+  const item = repository.findById(projectId, id);
+  if (!item) {
+    throw new WorkItemNotFoundError(`Work item not found: ${id.toString()}`);
+  }
+  return item;
+}
+
+function transitionWork(
+  options: TransitionWorkOptions,
+  transition: (item: WorkItem, now: string) => WorkItemTransition,
+): WorkItemView {
+  return withWorkRepository(options, (repository, projectId) => {
+    const item = requireWorkItem(
+      repository,
+      projectId,
+      WorkItemId.from(options.id),
+    );
+    const result = transition(
+      item,
+      (options.now ?? (() => new Date().toISOString()))(),
+    );
+    repository.applyTransition(result);
+    return toWorkItemView(result.item);
+  });
+}
+
+export function createWork(options: CreateWorkOptions): WorkItemView {
+  return withWorkRepository(options, (repository, projectId) => {
     const item = createWorkItem({
       assignee: options.assignee,
       description: options.description,
       id: WorkItemId.from((options.idFactory ?? randomUUID)()),
       now: (options.now ?? (() => new Date().toISOString()))(),
       priority: options.priority,
-      projectId: project.projectId,
+      projectId,
       title: options.title,
       type: options.type,
     });
     repository.create(item);
     return toWorkItemView(item);
-  } finally {
-    database.close();
-  }
+  });
 }
 
 export function showWork(options: ShowWorkOptions): WorkItemView {
-  const project = resolveWorkProject(options);
-  const database = openCairnDatabase(project.databasePath);
-  const repository = new SqliteWorkItemRepository(database);
-
-  try {
-    const item = repository.findById(
-      project.projectId,
-      WorkItemId.from(options.id),
-    );
-    if (!item) {
-      throw new WorkItemNotFoundError(`Work item not found: ${options.id}`);
-    }
-    return toWorkItemView(item);
-  } finally {
-    database.close();
-  }
+  return withWorkRepository(options, (repository, projectId) =>
+    toWorkItemView(
+      requireWorkItem(repository, projectId, WorkItemId.from(options.id)),
+    ),
+  );
 }
 
 export function listWork(options: WorkContextOptions): readonly WorkItemView[] {
-  const project = resolveWorkProject(options);
-  const database = openCairnDatabase(project.databasePath);
-  const repository = new SqliteWorkItemRepository(database);
+  return withWorkRepository(options, (repository, projectId) =>
+    repository.listByProject(projectId).map(toWorkItemView),
+  );
+}
 
-  try {
-    return repository
-      .listByProject(project.projectId)
-      .map(toWorkItemView);
-  } finally {
-    database.close();
-  }
+export function claimWork(options: ClaimWorkOptions): WorkItemView {
+  return transitionWork(options, (item, now) =>
+    claimWorkItem(item, options.assignee, now),
+  );
+}
+
+export function closeWork(options: TransitionWorkOptions): WorkItemView {
+  return transitionWork(options, closeWorkItem);
+}
+
+export function reopenWork(options: TransitionWorkOptions): WorkItemView {
+  return transitionWork(options, reopenWorkItem);
+}
+
+export function listWorkHistory(
+  options: ShowWorkOptions,
+): readonly WorkItemEvent[] {
+  return withWorkRepository(options, (repository, projectId) => {
+    const id = WorkItemId.from(options.id);
+    requireWorkItem(repository, projectId, id);
+    return repository.listEvents(projectId, id);
+  });
 }
