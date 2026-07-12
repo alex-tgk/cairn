@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a focused Cairn capability or workflow improvement
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What agent or developer workflow is currently difficult or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the observable result rather than a preferred implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and tradeoffs
+      description: Note relevant determinism, storage, compatibility, or migration concerns.

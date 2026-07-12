@@ -1,9 +1,30 @@
 {
   "name": "cairn",
   "version": "0.1.0",
+  "description": "A local-first CLI for AI agents that unifies work tracking, persistent memory, and project context in a deterministic SQLite store.",
   "private": true,
   "type": "module",
   "packageManager": "bun@1.3.14",
+  "author": "Alex Carroll",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alex-tgk/cairn.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alex-tgk/cairn/issues"
+  },
+  "homepage": "https://github.com/alex-tgk/cairn#readme",
+  "keywords": [
+    "ai-agents",
+    "cli",
+    "local-first",
+    "memory",
+    "sqlite"
+  ],
+  "engines": {
+    "bun": ">=1.3.14"
+  },
   "bin": {
     "cairn": "./src/cli.ts"
   },

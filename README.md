@@ -50,6 +50,7 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 - [Roadmap](docs/roadmap.md)
 - [Distribution](docs/distribution.md)
 - [Decision records](docs/README.md#decision-records)
+- [Contributing](CONTRIBUTING.md)
 
 ## Non-goals for Phase 1
 
@@ -58,3 +59,7 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 - Database branching and merge
 - Graphical interface
 - Replacing Serena or codebase-memory
+
+## License
+
+Cairn is available under the [MIT License](LICENSE).

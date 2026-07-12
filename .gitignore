@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+.serena/
 .*.bun-build
 *.db-shm
 *.db-wal

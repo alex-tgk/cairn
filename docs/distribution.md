@@ -22,19 +22,17 @@ Users should install and run Cairn without Bun, Node, Python, SQLite, or a devel
 
 ## Homebrew
 
-The tap will live in a public GitHub repository named `OWNER/homebrew-tap`. Users install with:
+The tap lives in the public GitHub repository `alex-tgk/homebrew-tap`. Users install with:
 
 ```sh
-brew install OWNER/tap/cairn
+brew install alex-tgk/tap/cairn
 ```
 
 The formula will build the tagged source with Homebrew's Bun formula as a build-only dependency. Published bottles prevent Bun from becoming an end-user dependency.
 
-Before the tap can be created, the project needs:
+Before the first bottle can be published, the project needs:
 
-- a confirmed GitHub owner and repository;
-- a stable version tag;
-- a license;
+- a stable GitHub release;
 - a release source archive and checksum;
 - a passing formula test;
 - macOS signing/notarization decisions.
