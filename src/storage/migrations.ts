@@ -67,4 +67,40 @@ export const MIGRATIONS: readonly Migration[] = [
       END;
     `,
   },
+  {
+    name: "add work items and audit events",
+    version: 2,
+    sql: `
+      CREATE TABLE work_items (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+        description TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open'
+          CHECK(status IN ('open', 'in_progress', 'closed')),
+        priority INTEGER NOT NULL DEFAULT 2 CHECK(priority BETWEEN 0 AND 4),
+        type TEXT NOT NULL DEFAULT 'task'
+          CHECK(type IN ('task', 'bug', 'feature', 'epic', 'chore')),
+        assignee TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        claimed_at TEXT,
+        closed_at TEXT
+      ) STRICT;
+
+      CREATE INDEX work_items_project_order_index
+        ON work_items(project_id, status, priority, created_at, id);
+
+      CREATE TABLE work_item_events (
+        id INTEGER PRIMARY KEY,
+        work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX work_item_events_item_order_index
+        ON work_item_events(work_item_id, created_at, id);
+    `,
+  },
 ];

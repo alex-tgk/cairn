@@ -27,10 +27,14 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Public `alex-tgk/homebrew-tap` Formula with local style, strict audit, source-install, and formula-test verification
 - Green tap CI on Ubuntu, Apple Silicon macOS, and Intel macOS
 - Clean reinstall through the published `alex-tgk/tap/cairn` path with passing version and database-health smoke tests
+- Migration 2 work-item and audit-event storage
+- `work create`, `work show`, and deterministic project-scoped `work list`
+- Creation audit events and work-item search projections
 
 ## Not implemented
 
-- Work items, dependencies, ready/blocked queries, comments, or audit events
+- Work update, claim, close, reopen, and history commands
+- Dependencies, ready/blocked queries, comments, labels, or notes
 - Durable memory, sessions, topics, relations, or timelines
 - Context source discovery, incremental indexing, or user-facing search
 - Beads and Engram import
@@ -39,12 +43,12 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 
 ## Next work slice
 
-Implement essential work tracking:
+Continue essential work tracking:
 
-1. Migration 2 for work items, dependencies, comments, labels, and audit events
-2. Create, show, list, update, claim, close, and reopen use cases
-3. Parent/child and blocking dependencies
-4. Ready and blocked queries with explanations
+1. Update, claim, close, and reopen use cases with preserved audit history
+2. Parent/child and blocking dependencies
+3. Ready and blocked queries with explanations
+4. Labels, comments, and notes
 5. Stable human and JSON CLI contracts
 6. Tests, documentation, and migration implications in the same work units
 

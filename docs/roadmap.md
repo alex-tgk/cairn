@@ -8,7 +8,7 @@ The roadmap is ordered by dependency and risk reduction rather than dates.
 | --- | --- | --- |
 | 0. Product and architecture | Scope and durable decisions | Complete |
 | 1. Project and SQLite foundation | Rename-safe identity and executable CLI | Implemented locally |
-| 2. Work tracking | Essential Beads workflows | Next |
+| 2. Work tracking | Essential Beads workflows | In progress |
 | 3. Durable memory | Essential Engram workflows | Planned |
 | 4. Context and unified search | Essential `agents-context` workflows | Planned |
 | 5. Migration and operations | Safe cutover, backup, and recovery | Planned |
@@ -38,6 +38,16 @@ Implement the minimum Beads-compatible workflow:
 6. Deterministic JSON contracts and acceptance tests
 
 Exit when an agent can capture work, identify an unblocked next item, explain why it is ready, and close it with history preserved.
+
+Current progress:
+
+- [x] Migration 2 work-item and audit-event schema
+- [x] Create, show, and deterministic project-scoped list
+- [x] Creation audit event and unified-search projection
+- [ ] Update, claim, close, and reopen
+- [ ] Parent/child and blocking dependencies
+- [ ] Ready and blocked explanations
+- [ ] Labels, comments, and notes
 
 ## Slice 3: durable memory
 

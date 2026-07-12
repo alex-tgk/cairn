@@ -80,8 +80,85 @@ describe("Cairn CLI", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 1,
+      schemaVersion: 2,
     });
+  });
+
+  test("creates, shows, and lists work in the current project", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const created = runCli(
+      [
+        "work",
+        "create",
+        "Implement work tracking",
+        "--description",
+        "Ship the first usable work commands",
+        "--priority",
+        "1",
+        "--type",
+        "feature",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+
+    expect(created.exitCode).toBe(0);
+    const item = JSON.parse(created.stdout) as {
+      id: string;
+      priority: number;
+      status: string;
+      title: string;
+      type: string;
+    };
+    expect(item).toMatchObject({
+      priority: 1,
+      status: "open",
+      title: "Implement work tracking",
+      type: "feature",
+    });
+
+    const shown = runCli(
+      ["work", "show", item.id, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    const listed = runCli(
+      ["work", "list", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+
+    expect(JSON.parse(shown.stdout)).toEqual(JSON.parse(created.stdout));
+    expect(JSON.parse(listed.stdout)).toEqual([JSON.parse(created.stdout)]);
+  });
+
+  test("rejects an invalid work priority", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const result = runCli(
+      [
+        "work",
+        "create",
+        "Invalid priority",
+        "--priority",
+        "urgent",
+        "--path",
+        workspace,
+      ],
+      dataDirectory,
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "Work item priority must be an integer from 0 to 4",
+    );
   });
 
   test("returns a non-zero result outside a Cairn project", () => {

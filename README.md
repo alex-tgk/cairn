@@ -31,6 +31,9 @@ bun run build
 ./dist/cairn --version
 ./dist/cairn init /path/to/project
 ./dist/cairn status /path/to/project
+./dist/cairn work create "Implement the next slice" --priority 1 --type feature
+./dist/cairn work list
+./dist/cairn work show <work-item-id>
 ./dist/cairn doctor
 ```
 
@@ -57,7 +60,8 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | macOS, Linux, and Windows CI scaffold | Implemented |
 | Source release and Homebrew Formula | Implemented |
 | Prebuilt release executables and Homebrew bottles | Planned |
-| Work tracking | Next slice |
+| Work capture, show, and deterministic project listing | Implemented |
+| Work lifecycle, dependencies, comments, and labels | In progress |
 | Durable memory | Planned |
 | Local context indexing and unified search | Planned |
 | Beads and Engram migration | Planned |

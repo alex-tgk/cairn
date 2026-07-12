@@ -83,10 +83,11 @@ The first slice implements:
 6. `init`, `status`, `doctor`, `--help`, and `--version`
 7. Human-readable and JSON output
 8. Strict type checking, unit/integration tests, and standalone compilation
+9. Work-item capture, project-isolated lookup, deterministic listing, audit creation, and search projection
 
 ## Next vertical slices
 
-1. Work capture and ready/blocked dependency queries
+1. Work lifecycle and ready/blocked dependency queries
 2. Durable memory capture, topics, context, and timelines
 3. Incremental source indexing and FTS search
 4. Unified typed search projection

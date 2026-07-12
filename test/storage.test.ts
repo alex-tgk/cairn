@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,7 @@ import {
   openCairnDatabase,
   registerProjectWorkspace,
 } from "../src/storage/database.ts";
+import { MIGRATIONS } from "../src/storage/migrations.ts";
 
 const PROJECT_ID = "018f4f32-95d6-7d6d-9f54-1d6d7a6d9a0e";
 const NOW = "2026-07-12T12:00:00.000Z";
@@ -34,10 +36,49 @@ describe("Cairn SQLite storage", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 1,
+      schemaVersion: 2,
     });
 
     database.close();
+  });
+
+  test("upgrades an existing version 1 database without rebuilding it", () => {
+    const databasePath = createDatabasePath();
+    const versionOne = MIGRATIONS[0];
+    if (!versionOne) {
+      throw new Error("Cairn migration 1 is missing");
+    }
+    const originalDatabase = new Database(databasePath, {
+      create: true,
+      strict: true,
+    });
+    originalDatabase.exec(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        applied_at TEXT NOT NULL
+      ) STRICT;
+    `);
+    originalDatabase.exec(versionOne.sql);
+    originalDatabase
+      .query<void, [number, string]>(
+        `INSERT INTO schema_migrations(version, name, applied_at)
+         VALUES (?, ?, '2026-07-12T12:00:00.000Z')`,
+      )
+      .run(versionOne.version, versionOne.name);
+    originalDatabase.close();
+
+    const upgradedDatabase = openCairnDatabase(databasePath);
+
+    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(2);
+    expect(
+      upgradedDatabase
+        .query<{ name: string }, []>(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'work_items'",
+        )
+        .get(),
+    ).toEqual({ name: "work_items" });
+    upgradedDatabase.close();
   });
 
   test("registers one logical project across multiple workspace paths", () => {
