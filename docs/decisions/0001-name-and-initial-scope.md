@@ -1,27 +1,23 @@
-# ADR 0001: Name the project Cairn and start with durable memory
+# ADR 0001: Name the project Cairn and unify work, memory, and context
 
 ## Status
 
-Accepted on July 10, 2026.
+Accepted July 10, 2026; Phase 1 boundary clarified July 11, 2026.
 
 ## Context
 
-The project began in a placeholder directory named `brainstorm`. Its purpose is to replace the fragmented local AI memory-management workflow with a coherent tool.
-
-The current local stack also includes repository context, graph synthesis, and code-intelligence tools. Treating all of them as the first replacement target would combine several different problem domains and make it difficult to ship a trustworthy core.
+The project began in a placeholder directory named `brainstorm`. The local agent workflow divides essential continuity across Beads, Engram, and `agents-context`.
 
 ## Decision
 
 - Use **Cairn** as both the product and repository name.
-- Build durable memory first.
-- Defer broader repository and project context until the memory core is proven.
-- Keep Serena and codebase-memory outside the initial replacement boundary.
-
-The name reflects durable markers left behind so later travelers—or agents—can recover the path.
+- Replace essential work tracking, durable memory, and deterministic local context workflows in Phase 1.
+- Keep LightRAG, Ollama, Serena, codebase-memory, and model-powered capabilities outside the Phase 1 core.
+- Preserve separate work, memory, and context domains behind one command surface.
 
 ## Consequences
 
-- Product language should use `memory`, `record`, `scope`, `topic`, `timeline`, and `provenance` before generic `context` language.
-- Initial acceptance criteria must describe capture and retrieval, not repository indexing or generated synthesis.
-- Existing context tools continue operating during the first phases.
-- A later context phase requires its own product exploration and ADRs.
+- Phase 1 is broader than memory alone and must be delivered as vertical slices.
+- Compatibility targets actual relied-on workflows rather than every flag in the replaced tools.
+- Unified search is a projection across typed domains, not a generic source model.
+- Context retrieval cannot require embeddings or inference.
