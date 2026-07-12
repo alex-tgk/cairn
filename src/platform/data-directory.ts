@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -22,7 +22,12 @@ export function resolveDataDirectory(
   }
 
   if (platform === "darwin") {
-    return join(homeDirectory, "Library", "Application Support", "Cairn");
+    return posix.join(
+      homeDirectory,
+      "Library",
+      "Application Support",
+      "Cairn",
+    );
   }
 
   if (platform === "win32") {
@@ -32,5 +37,8 @@ export function resolveDataDirectory(
     return win32.join(localApplicationData, "Cairn");
   }
 
-  return join(environment.XDG_DATA_HOME ?? join(homeDirectory, ".local", "share"), "cairn");
+  return posix.join(
+    environment.XDG_DATA_HOME ?? posix.join(homeDirectory, ".local", "share"),
+    "cairn",
+  );
 }
