@@ -8,8 +8,10 @@ import {
   closeWorkItem,
   createWorkItem,
   reopenWorkItem,
+  updateWorkItem,
   WorkItemId,
   type WorkItem,
+  type WorkItemChanges,
   type WorkItemEvent,
   type WorkItemStatus,
   type WorkItemTransition,
@@ -52,6 +54,8 @@ type ShowWorkOptions = WorkContextOptions & Readonly<{ id: string }>;
 type TransitionWorkOptions = ShowWorkOptions &
   Readonly<{ now?: (() => string) | undefined }>;
 type ClaimWorkOptions = TransitionWorkOptions & Readonly<{ assignee: string }>;
+type UpdateWorkOptions = TransitionWorkOptions &
+  Readonly<{ changes: WorkItemChanges }>;
 
 export class WorkItemNotFoundError extends Error {
   override readonly name = "WorkItemNotFoundError";
@@ -171,6 +175,12 @@ export function closeWork(options: TransitionWorkOptions): WorkItemView {
 
 export function reopenWork(options: TransitionWorkOptions): WorkItemView {
   return transitionWork(options, reopenWorkItem);
+}
+
+export function updateWork(options: UpdateWorkOptions): WorkItemView {
+  return transitionWork(options, (item, now) =>
+    updateWorkItem(item, options.changes, now),
+  );
 }
 
 export function listWorkHistory(

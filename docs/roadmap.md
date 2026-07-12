@@ -45,7 +45,7 @@ Current progress:
 - [x] Create, show, and deterministic project-scoped list
 - [x] Creation audit event and unified-search projection
 - [x] Claim, close, and reopen with audit history
-- [ ] Work-item metadata updates
+- [x] Work-item metadata updates with audit history
 - [ ] Parent/child and blocking dependencies
 - [ ] Ready and blocked explanations
 - [ ] Labels, comments, and notes

@@ -215,6 +215,81 @@ describe("Cairn CLI", () => {
     ).toEqual(["created", "claimed", "closed", "reopened"]);
   });
 
+  test("updates work metadata and records the changed fields", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+    const created = runCli(
+      ["work", "create", "Draft title", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    const id = (JSON.parse(created.stdout) as { id: string }).id;
+
+    const updated = runCli(
+      [
+        "work",
+        "update",
+        id,
+        "--title",
+        "Final title",
+        "--description",
+        "Ready for dependencies",
+        "--priority",
+        "1",
+        "--type",
+        "feature",
+        "--assignee",
+        "agent-codex",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    const history = runCli(
+      ["work", "history", id, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+
+    expect(JSON.parse(updated.stdout)).toMatchObject({
+      assignee: "agent-codex",
+      description: "Ready for dependencies",
+      priority: 1,
+      title: "Final title",
+      type: "feature",
+    });
+    expect(
+      (JSON.parse(history.stdout) as readonly {
+        eventType: string;
+        payload: object;
+      }[]).at(-1),
+    ).toMatchObject({
+      eventType: "updated",
+      payload: {
+        assignee: "agent-codex",
+        description: "Ready for dependencies",
+        priority: 1,
+        title: "Final title",
+        type: "feature",
+      },
+    });
+
+    const unassigned = runCli(
+      [
+        "work",
+        "update",
+        id,
+        "--clear-assignee",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    expect(JSON.parse(unassigned.stdout)).toMatchObject({ assignee: null });
+  });
+
   test("returns a non-zero result outside a Cairn project", () => {
     const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
     const workspace = createTemporaryDirectory("cairn-cli-workspace-");

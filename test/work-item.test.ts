@@ -5,6 +5,7 @@ import {
   closeWorkItem,
   createWorkItem,
   reopenWorkItem,
+  updateWorkItem,
   WorkItemId,
   WorkItemTransitionError,
 } from "../src/work/work-item.ts";
@@ -79,5 +80,47 @@ describe("work-item lifecycle", () => {
     expect(() =>
       claimWorkItem(closed, "agent-codex", "2026-07-12T15:00:00.000Z"),
     ).toThrow(WorkItemTransitionError);
+  });
+
+  test("updates metadata and describes the changed values in history", () => {
+    const transition = updateWorkItem(
+      createFixture(),
+      {
+        assignee: "agent-codex",
+        priority: 1,
+        title: "Implement complete lifecycle commands",
+        type: "feature",
+      },
+      "2026-07-12T13:00:00.000Z",
+    );
+
+    expect(transition.item).toMatchObject({
+      assignee: "agent-codex",
+      updatedAt: "2026-07-12T13:00:00.000Z",
+    });
+    expect(transition.item.title.toString()).toBe(
+      "Implement complete lifecycle commands",
+    );
+    expect(transition.item.priority.toNumber()).toBe(1);
+    expect(transition.event).toEqual({
+      createdAt: "2026-07-12T13:00:00.000Z",
+      eventType: "updated",
+      payload: {
+        assignee: "agent-codex",
+        priority: 1,
+        title: "Implement complete lifecycle commands",
+        type: "feature",
+      },
+    });
+  });
+
+  test("requires at least one metadata change", () => {
+    expect(() =>
+      updateWorkItem(
+        createFixture(),
+        {},
+        "2026-07-12T13:00:00.000Z",
+      ),
+    ).toThrow("At least one work item field must be updated");
   });
 });

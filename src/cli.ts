@@ -13,7 +13,10 @@ import {
   checkDatabaseHealth,
   openCairnDatabase,
 } from "./storage/database.ts";
-import { parseWorkItemType } from "./work/work-item.ts";
+import {
+  parseWorkItemType,
+  type WorkItemChanges,
+} from "./work/work-item.ts";
 import {
   claimWork,
   closeWork,
@@ -22,6 +25,7 @@ import {
   listWorkHistory,
   reopenWork,
   showWork,
+  updateWork,
 } from "./work/work-service.ts";
 
 const HELP = `Cairn ${packageJson.version}
@@ -38,6 +42,10 @@ Usage:
   cairn work close <id> [--path <path>] [--json]
   cairn work reopen <id> [--path <path>] [--json]
   cairn work history <id> [--path <path>] [--json]
+  cairn work update <id> [--title <text>] [--description <text>]
+                    [--priority <0-4>] [--type <type>]
+                    [--assignee <name> | --clear-assignee]
+                    [--path <path>] [--json]
   cairn --version
   cairn --help
 `;
@@ -59,10 +67,30 @@ function optionValue(
     return undefined;
   }
   const value = arguments_[index + 1];
-  if (!value || value.startsWith("--")) {
+  if (value === undefined || value.startsWith("--")) {
     throw new Error(`Missing value for ${option}`);
   }
   return value;
+}
+
+function workItemChanges(arguments_: readonly string[]): WorkItemChanges {
+  const assignee = optionValue(arguments_, "--assignee");
+  const clearAssignee = hasFlag(arguments_, "--clear-assignee");
+  if (assignee !== undefined && clearAssignee) {
+    throw new Error("Use either --assignee or --clear-assignee, not both");
+  }
+  const description = optionValue(arguments_, "--description");
+  const priority = optionValue(arguments_, "--priority");
+  const title = optionValue(arguments_, "--title");
+  const type = optionValue(arguments_, "--type");
+  return {
+    ...(assignee === undefined ? {} : { assignee }),
+    ...(clearAssignee ? { assignee: null } : {}),
+    ...(description === undefined ? {} : { description }),
+    ...(priority === undefined ? {} : { priority: Number(priority) }),
+    ...(title === undefined ? {} : { title }),
+    ...(type === undefined ? {} : { type: parseWorkItemType(type) }),
+  };
 }
 
 function printResult(value: object, json: boolean): void {
@@ -165,6 +193,18 @@ function runWorkCommand(arguments_: readonly string[], json: boolean): number {
 
   if (action === "history") {
     printWorkHistory(listWorkHistory({ id: primary ?? "", path }), json);
+    return 0;
+  }
+
+  if (action === "update") {
+    printResult(
+      updateWork({
+        changes: workItemChanges(arguments_),
+        id: primary ?? "",
+        path,
+      }),
+      json,
+    );
     return 0;
   }
 

@@ -30,11 +30,11 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Migration 2 work-item and audit-event storage
 - `work create`, `work show`, and deterministic project-scoped `work list`
 - `work claim`, `work close`, `work reopen`, and `work history`
+- `work update` for title, description, priority, type, and assignment
 - Transactional audit events and synchronized work-item search projections
 
 ## Not implemented
 
-- Work-item metadata updates
 - Dependencies, ready/blocked queries, comments, labels, or notes
 - Durable memory, sessions, topics, relations, or timelines
 - Context source discovery, incremental indexing, or user-facing search
@@ -46,12 +46,11 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 
 Continue essential work tracking:
 
-1. Work-item metadata updates with preserved audit history
-2. Parent/child and blocking dependencies
-3. Ready and blocked queries with explanations
-4. Labels, comments, and notes
-5. Stable human and JSON CLI contracts
-6. Tests, documentation, and migration implications in the same work units
+1. Parent/child and blocking dependencies
+2. Ready and blocked queries with explanations
+3. Labels, comments, and notes
+4. Stable human and JSON CLI contracts
+5. Tests, documentation, and migration implications in the same work units
 
 ## Durable decisions
 

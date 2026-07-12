@@ -8,7 +8,12 @@ export const WORK_ITEM_TYPES = [
 
 export type WorkItemStatus = "open" | "in_progress" | "closed";
 export type WorkItemType = (typeof WORK_ITEM_TYPES)[number];
-export type WorkItemEventType = "created" | "claimed" | "closed" | "reopened";
+export type WorkItemEventType =
+  | "created"
+  | "updated"
+  | "claimed"
+  | "closed"
+  | "reopened";
 export type WorkItemEventPayload = Readonly<
   Record<string, string | number | null>
 >;
@@ -117,6 +122,14 @@ export type WorkItemTransition = Readonly<{
   item: WorkItem;
 }>;
 
+export type WorkItemChanges = Readonly<{
+  assignee?: string | null | undefined;
+  description?: string | undefined;
+  priority?: number | undefined;
+  title?: string | undefined;
+  type?: WorkItemType | undefined;
+}>;
+
 type CreateWorkItemInput = Readonly<{
   assignee?: string | undefined;
   description?: string | undefined;
@@ -208,5 +221,49 @@ export function reopenWorkItem(
       payload: { status: "open" },
     },
     item: { ...item, closedAt: null, status: "open", updatedAt: now },
+  };
+}
+
+export function updateWorkItem(
+  item: WorkItem,
+  changes: WorkItemChanges,
+  now: string,
+): WorkItemTransition {
+  let updated = item;
+  const payload: Record<string, string | number | null> = {};
+
+  if (changes.title !== undefined) {
+    const title = WorkItemTitle.from(changes.title);
+    updated = { ...updated, title };
+    payload.title = title.toString();
+  }
+  if (changes.description !== undefined) {
+    const description = changes.description.trim();
+    updated = { ...updated, description };
+    payload.description = description;
+  }
+  if (changes.priority !== undefined) {
+    const priority = WorkItemPriority.from(changes.priority);
+    updated = { ...updated, priority };
+    payload.priority = priority.toNumber();
+  }
+  if (changes.type !== undefined) {
+    updated = { ...updated, type: changes.type };
+    payload.type = changes.type;
+  }
+  if (Object.hasOwn(changes, "assignee")) {
+    const assignee = changes.assignee?.trim() || null;
+    updated = { ...updated, assignee };
+    payload.assignee = assignee;
+  }
+  if (Object.keys(payload).length === 0) {
+    throw new WorkItemValidationError(
+      "At least one work item field must be updated",
+    );
+  }
+
+  return {
+    event: { createdAt: now, eventType: "updated", payload },
+    item: { ...updated, updatedAt: now },
   };
 }
