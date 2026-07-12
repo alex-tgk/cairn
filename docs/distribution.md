@@ -30,18 +30,29 @@ brew install alex-tgk/tap/cairn
 
 The formula will build the tagged source with Homebrew's Bun formula as a build-only dependency. Published bottles prevent Bun from becoming an end-user dependency.
 
-Before the first bottle can be published, the project needs:
+### Current delivery state
 
-- a stable GitHub release;
-- a release source archive and checksum;
-- a passing formula test;
+- The public `v0.1.0` source release is published.
+- The release archive checksum is pinned in `Formula/cairn.rb` in the tap.
+- `brew style` and `brew audit --strict --online` pass locally.
+- A source installation, `brew test`, `cairn --version`, and `cairn doctor` pass locally.
+- A clean reinstall through the published `alex-tgk/tap/cairn` path passes.
+- Main-branch source CI passes on macOS, Linux, and Windows.
+- Tap syntax CI passes on Ubuntu, Apple Silicon macOS, and Intel macOS.
+- Bottles and prebuilt release executables are not published yet.
+
+Before the first bottle can be published, the project still needs:
+
+- a bottle-building release workflow;
+- bottle publication and clean-machine verification;
 - macOS signing/notarization decisions.
 
 ## Release acceptance
 
-- [ ] `cairn --version` works on every artifact target.
-- [ ] SQLite, migrations, and FTS5 pass native smoke tests.
+- [x] `cairn --version` works in the locally built executable and source-installed Formula.
+- [x] SQLite, migrations, and FTS5 pass local and source-CI smoke tests.
 - [ ] The executable creates data only in the documented platform directory.
-- [ ] Release checksums are published.
+- [x] The source release checksum is published in the Formula.
 - [ ] macOS artifacts are signed and notarized.
-- [ ] `brew audit`, source installation, bottle installation, and `brew test` pass.
+- [x] `brew audit`, source installation, and `brew test` pass.
+- [ ] Bottle installation passes.

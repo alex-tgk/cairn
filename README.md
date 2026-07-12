@@ -4,6 +4,23 @@ Cairn is a local-first work, memory, and context system for AI coding agents. Ph
 
 The first executable foundation is implemented: Cairn can create stable project identity, register renamed or cloned workspaces in SQLite, report project status, verify database integrity and FTS5, and compile into a standalone executable.
 
+## Install
+
+Install the current release with Homebrew:
+
+```sh
+brew install alex-tgk/tap/cairn
+```
+
+Then verify it:
+
+```sh
+cairn --version
+cairn doctor
+```
+
+The current Homebrew Formula builds the tagged source. Prebuilt release executables and Homebrew bottles remain planned.
+
 ## Quick path
 
 ```sh
@@ -38,6 +55,8 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | SQLite migrations, WAL, foreign keys, and FTS5 | Implemented |
 | `init`, `status`, `doctor`, JSON output | Implemented |
 | macOS, Linux, and Windows CI scaffold | Implemented |
+| Source release and Homebrew Formula | Implemented |
+| Prebuilt release executables and Homebrew bottles | Planned |
 | Work tracking | Next slice |
 | Durable memory | Planned |
 | Local context indexing and unified search | Planned |
