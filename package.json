@@ -8,7 +8,7 @@
     "cairn": "./src/cli.ts"
   },
   "scripts": {
-    "build": "bun build --compile ./src/cli.ts --outfile ./dist/cairn",
+    "build": "bun run ./scripts/build.ts",
     "check": "bun run typecheck && bun test",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
