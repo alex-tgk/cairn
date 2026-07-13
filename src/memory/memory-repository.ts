@@ -34,6 +34,7 @@ export interface MemoryRepository {
     memoryId: MemoryId,
     relatedMemoryId: MemoryId,
   ): Promise<void>;
+  applyLifecycleTransition(transition: MemoryTransition): Promise<void>;
   search(
     projectId: string,
     query: string,
@@ -42,6 +43,7 @@ export interface MemoryRepository {
 }
 
 export type MemoryFilter = Readonly<{
+  includeArchived?: boolean | undefined;
   limit?: number | undefined;
   scope?: MemoryScope | undefined;
   topic?: string | undefined;

@@ -66,8 +66,15 @@ Current progress:
       and `memory relations` for idempotent, symmetric cross-memory linking
 - [x] `memory timeline` for chronological before/after context scoped to a
       memory's own project/personal visibility boundary
-- [ ] Pin/archive state
-- [ ] Session-summary-specific listing and the `context` primer command
+- [x] Migration 7 pin/archive state; `memory pin`, `memory unpin`,
+      `memory archive`, and `memory unarchive`, with archived memories
+      excluded from `list`/`search` by default (`--include-archived` opts in)
+- [x] `memory sessions` for session-summary-specific listing and
+      `memory context` as the primer command surfacing pinned memories, the
+      most recent session summary, and recent non-session-summary memories
+
+Slice 3 (durable memory) is complete per ADR 0010's essential Engram cutover
+contract, including its explicit deferrals.
 
 See [ADR 0010](decisions/0010-essential-engram-cutover-contract.md) for the
 essential Engram cutover contract and its explicit deferrals.

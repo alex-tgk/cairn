@@ -5,6 +5,8 @@ import { openCairnDatabase } from "../storage/database.ts";
 import { CairnQueryDatabase } from "../storage/query-database.ts";
 import {
   createMemory,
+  setMemoryArchived,
+  setMemoryPinned,
   upsertMemory,
   MemoryId,
   type Memory,
@@ -15,9 +17,11 @@ import type { MemoryFilter, MemoryRepository } from "./memory-repository.ts";
 import { SqliteMemoryRepository } from "./sqlite-memory-repository.ts";
 
 export type MemoryView = Readonly<{
+  archived: boolean;
   content: string;
   createdAt: string;
   id: string;
+  pinned: boolean;
   projectId: string | null;
   revision: number;
   scope: MemoryScope;
@@ -60,6 +64,7 @@ export type MemoryTimelineView = Readonly<{
 
 type ListMemoryOptions = MemoryContextOptions &
   Readonly<{
+    includeArchived?: boolean | undefined;
     limit?: number | undefined;
     scope?: MemoryScope | undefined;
     topic?: string | undefined;
@@ -67,6 +72,21 @@ type ListMemoryOptions = MemoryContextOptions &
   }>;
 
 type SearchMemoryOptions = ListMemoryOptions & Readonly<{ query: string }>;
+
+type LifecycleMemoryOptions = MemoryContextOptions &
+  Readonly<{ id: string; now?: (() => string) | undefined }>;
+
+type SessionSummariesOptions = MemoryContextOptions &
+  Readonly<{ limit?: number | undefined; scope?: MemoryScope | undefined }>;
+
+type ContextPrimerOptions = MemoryContextOptions &
+  Readonly<{ recentLimit?: number | undefined }>;
+
+export type ContextPrimerView = Readonly<{
+  pinnedMemories: readonly MemoryView[];
+  recentMemories: readonly MemoryView[];
+  recentSessionSummary: MemoryView | null;
+}>;
 
 export class MemoryNotFoundError extends Error {
   readonly code = "memory_not_found";
@@ -102,9 +122,11 @@ function resolveMemoryProject(options: MemoryContextOptions) {
 function toMemoryView(memory: Memory): MemoryView {
   const id = memory.id.toString();
   return {
+    archived: memory.archived,
     content: memory.content,
     createdAt: memory.createdAt,
     id,
+    pinned: memory.pinned,
     projectId: memory.projectId,
     revision: memory.revision,
     scope: memory.scope,
@@ -139,6 +161,7 @@ async function withMemoryRepository<Result>(
 
 function toFilter(options: ListMemoryOptions): MemoryFilter {
   return {
+    includeArchived: options.includeArchived,
     limit: options.limit,
     scope: options.scope,
     topic: options.topic,
@@ -285,6 +308,97 @@ export async function getMemoryTimeline(
       after: timeline.after.map(toMemoryView),
       before: timeline.before.map(toMemoryView),
       target: toMemoryView(timeline.target),
+    };
+  });
+}
+
+export async function pinMemory(
+  options: LifecycleMemoryOptions,
+): Promise<MemoryView> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const now = (options.now ?? (() => new Date().toISOString()))();
+    const memory = await requireMemory(repository, projectId, options.id);
+    const transition = setMemoryPinned(memory, true, now);
+    await repository.applyLifecycleTransition(transition);
+    return toMemoryView(transition.memory);
+  });
+}
+
+export async function unpinMemory(
+  options: LifecycleMemoryOptions,
+): Promise<MemoryView> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const now = (options.now ?? (() => new Date().toISOString()))();
+    const memory = await requireMemory(repository, projectId, options.id);
+    const transition = setMemoryPinned(memory, false, now);
+    await repository.applyLifecycleTransition(transition);
+    return toMemoryView(transition.memory);
+  });
+}
+
+export async function archiveMemory(
+  options: LifecycleMemoryOptions,
+): Promise<MemoryView> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const now = (options.now ?? (() => new Date().toISOString()))();
+    const memory = await requireMemory(repository, projectId, options.id);
+    const transition = setMemoryArchived(memory, true, now);
+    await repository.applyLifecycleTransition(transition);
+    return toMemoryView(transition.memory);
+  });
+}
+
+export async function unarchiveMemory(
+  options: LifecycleMemoryOptions,
+): Promise<MemoryView> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const now = (options.now ?? (() => new Date().toISOString()))();
+    const memory = await requireMemory(repository, projectId, options.id);
+    const transition = setMemoryArchived(memory, false, now);
+    await repository.applyLifecycleTransition(transition);
+    return toMemoryView(transition.memory);
+  });
+}
+
+export async function listSessionSummaries(
+  options: SessionSummariesOptions,
+): Promise<readonly MemoryView[]> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const memories = await repository.listByProject(projectId, {
+      limit: options.limit,
+      scope: options.scope,
+      type: "session_summary",
+    });
+    return memories.map(toMemoryView);
+  });
+}
+
+export async function getContextPrimer(
+  options: ContextPrimerOptions,
+): Promise<ContextPrimerView> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const recentLimit = options.recentLimit ?? 5;
+    const pinned = await repository.listByProject(projectId, { limit: 50 });
+    const pinnedMemories = pinned.filter((memory) => memory.pinned);
+
+    const sessionSummaries = await repository.listByProject(projectId, {
+      limit: 1,
+      type: "session_summary",
+    });
+    const recentSessionSummary = sessionSummaries[0] ?? null;
+
+    const recent = await repository.listByProject(projectId, {
+      limit: recentLimit + 1,
+    });
+    const recentMemories = recent
+      .filter((memory) => memory.type !== "session_summary")
+      .slice(0, recentLimit);
+
+    return {
+      pinnedMemories: pinnedMemories.map(toMemoryView),
+      recentMemories: recentMemories.map(toMemoryView),
+      recentSessionSummary:
+        recentSessionSummary === null ? null : toMemoryView(recentSessionSummary),
     };
   });
 }

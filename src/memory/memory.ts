@@ -13,7 +13,13 @@ export type MemoryType = (typeof MEMORY_TYPES)[number];
 export const MEMORY_SCOPES = ["project", "personal"] as const;
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 
-export type MemoryEventType = "created" | "updated";
+export type MemoryEventType =
+  | "created"
+  | "updated"
+  | "pinned"
+  | "unpinned"
+  | "archived"
+  | "unarchived";
 export type MemoryEventPayload = Readonly<
   Record<string, string | number | null>
 >;
@@ -130,9 +136,11 @@ export function parseMemoryScope(value: string): MemoryScope {
 }
 
 export type Memory = Readonly<{
+  archived: boolean;
   content: string;
   createdAt: string;
   id: MemoryId;
+  pinned: boolean;
   projectId: string | null;
   revision: number;
   scope: MemoryScope;
@@ -184,9 +192,11 @@ export function createMemory(input: CreateMemoryInput): Memory {
     );
   }
   return {
+    archived: false,
     content: normalizeMemoryContent(input.content),
     createdAt: input.now,
     id: input.id,
+    pinned: false,
     projectId: input.projectId,
     revision: 1,
     scope: input.scope,
@@ -231,5 +241,41 @@ export function upsertMemory(
       type: fields.type,
       updatedAt: now,
     },
+  };
+}
+
+export function setMemoryPinned(
+  memory: Memory,
+  pinned: boolean,
+  now: string,
+): MemoryTransition {
+  const revision = memory.revision + 1;
+  return {
+    event: {
+      createdAt: now,
+      eventType: pinned ? "pinned" : "unpinned",
+      payload: { pinned: pinned ? 1 : 0 },
+      revision,
+    },
+    expectedRevision: memory.revision,
+    memory: { ...memory, pinned, revision, updatedAt: now },
+  };
+}
+
+export function setMemoryArchived(
+  memory: Memory,
+  archived: boolean,
+  now: string,
+): MemoryTransition {
+  const revision = memory.revision + 1;
+  return {
+    event: {
+      createdAt: now,
+      eventType: archived ? "archived" : "unarchived",
+      payload: { archived: archived ? 1 : 0 },
+      revision,
+    },
+    expectedRevision: memory.revision,
+    memory: { ...memory, archived, revision, updatedAt: now },
   };
 }

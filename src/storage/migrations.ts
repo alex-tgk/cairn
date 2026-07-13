@@ -398,4 +398,15 @@ export const MIGRATIONS: readonly Migration[] = [
         ON memory_relations(related_memory_id, memory_id);
     `,
   },
+  {
+    name: "add memory pin and archive state",
+    version: 7,
+    sql: `
+      ALTER TABLE memories ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0, 1));
+      ALTER TABLE memories ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1));
+
+      CREATE INDEX memories_scope_project_archived_order_index
+        ON memories(scope, project_id, archived, created_at, id);
+    `,
+  },
 ];

@@ -31,9 +31,11 @@ type MemoryRow = Selectable<MemoryTable>;
 
 function mapMemory(row: MemoryRow): Memory {
   return restoreMemory({
+    archived: row.archived === 1,
     content: row.content,
     createdAt: row.created_at,
     id: MemoryId.from(row.id),
+    pinned: row.pinned === 1,
     projectId: row.project_id,
     revision: row.revision,
     scope: row.scope,
@@ -54,6 +56,9 @@ function buildFilterCondition(projectId: string, filter: MemoryFilter | undefine
   const conditions = [
     sql`(memories.scope = 'personal' OR memories.project_id = ${projectId})`,
   ];
+  if (filter?.includeArchived !== true) {
+    conditions.push(sql`memories.archived = 0`);
+  }
   if (filter?.scope !== undefined) {
     conditions.push(sql`memories.scope = ${filter.scope}`);
   }
@@ -116,6 +121,33 @@ export class SqliteMemoryRepository implements MemoryRepository {
         transition.event,
       );
       await this.updateSearchProjection(database, transition.memory);
+    });
+  }
+
+  async applyLifecycleTransition(transition: MemoryTransition): Promise<void> {
+    await this.database.immediateTransaction(async (database) => {
+      const result = await database
+        .updateTable("memories")
+        .set({
+          archived: transition.memory.archived ? 1 : 0,
+          pinned: transition.memory.pinned ? 1 : 0,
+          revision: transition.memory.revision,
+          updated_at: transition.memory.updatedAt,
+        })
+        .where("id", "=", transition.memory.id.toString())
+        .where("revision", "=", transition.expectedRevision)
+        .executeTakeFirst();
+      if (result.numUpdatedRows === 0n) {
+        throw new MemoryConflictError(
+          transition.memory.id.toString(),
+          transition.expectedRevision,
+        );
+      }
+      await this.insertEvent(
+        database,
+        transition.memory.id.toString(),
+        transition.event,
+      );
     });
   }
 
@@ -286,9 +318,11 @@ export class SqliteMemoryRepository implements MemoryRepository {
     await database
       .insertInto("memories")
       .values({
+        archived: memory.archived ? 1 : 0,
         content: memory.content,
         created_at: memory.createdAt,
         id: memory.id.toString(),
+        pinned: memory.pinned ? 1 : 0,
         project_id: memory.projectId,
         revision: memory.revision,
         scope: memory.scope,

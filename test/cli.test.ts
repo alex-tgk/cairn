@@ -80,7 +80,7 @@ describe("Cairn CLI", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 6,
+      schemaVersion: 7,
     });
   });
 
@@ -992,6 +992,148 @@ describe("Cairn CLI", () => {
     };
     expect(timeline.target.title).toBe("First");
     expect(timeline.after.map((memory) => memory.title)).toEqual(["Second"]);
+  });
+
+  test("pins, unpins, archives, and unarchives a memory", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const saved = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Important decision",
+          "Should be pinned.",
+          "--type",
+          "decision",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string };
+
+    const pinned = JSON.parse(
+      runCli(["memory", "pin", saved.id, "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as { pinned: boolean; revision: number };
+    expect(pinned.pinned).toBe(true);
+    expect(pinned.revision).toBe(2);
+
+    const unpinned = JSON.parse(
+      runCli(["memory", "unpin", saved.id, "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as { pinned: boolean };
+    expect(unpinned.pinned).toBe(false);
+
+    const archived = JSON.parse(
+      runCli(
+        ["memory", "archive", saved.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { archived: boolean };
+    expect(archived.archived).toBe(true);
+
+    const listedWithoutArchived = JSON.parse(
+      runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as readonly { title: string }[];
+    expect(listedWithoutArchived).toHaveLength(0);
+
+    const listedWithArchived = JSON.parse(
+      runCli(
+        ["memory", "list", "--include-archived", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as readonly { title: string }[];
+    expect(listedWithArchived).toHaveLength(1);
+
+    const unarchived = JSON.parse(
+      runCli(
+        ["memory", "unarchive", saved.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { archived: boolean };
+    expect(unarchived.archived).toBe(false);
+
+    expect(
+      JSON.parse(
+        runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory)
+          .stdout,
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("lists session summaries and builds a context primer", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const decision = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Chose SQLite",
+          "Deterministic local storage.",
+          "--type",
+          "decision",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string };
+    runCli(["memory", "pin", decision.id, "--path", workspace, "--json"], dataDirectory);
+
+    runCli(
+      [
+        "memory",
+        "save",
+        "Session summary: cairn",
+        "Goal: ship memory lifecycle. Accomplished: pin/archive/context.",
+        "--type",
+        "session_summary",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+
+    const sessions = JSON.parse(
+      runCli(["memory", "sessions", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as readonly { title: string; type: string }[];
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.type).toBe("session_summary");
+
+    const primer = JSON.parse(
+      runCli(["memory", "context", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as {
+      pinnedMemories: readonly { title: string }[];
+      recentMemories: readonly { title: string }[];
+      recentSessionSummary: { title: string } | null;
+    };
+    expect(primer.pinnedMemories.map((memory) => memory.title)).toEqual([
+      "Chose SQLite",
+    ]);
+    expect(primer.recentSessionSummary?.title).toBe("Session summary: cairn");
+    expect(
+      primer.recentMemories.some((memory) => memory.title === "Chose SQLite"),
+    ).toBe(true);
+    expect(
+      primer.recentMemories.some(
+        (memory) => memory.title === "Session summary: cairn",
+      ),
+    ).toBe(false);
   });
 
   test("returns a non-zero result outside a Cairn project", () => {

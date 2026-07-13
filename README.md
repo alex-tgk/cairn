@@ -61,6 +61,12 @@ bun run build
 ./dist/cairn memory relations <memory-id>
 ./dist/cairn memory unrelate <memory-id> <related-memory-id>
 ./dist/cairn memory timeline <memory-id> --before 5 --after 5
+./dist/cairn memory pin <memory-id>
+./dist/cairn memory unpin <memory-id>
+./dist/cairn memory archive <memory-id>
+./dist/cairn memory unarchive <memory-id>
+./dist/cairn memory sessions --limit 5
+./dist/cairn memory context
 ./dist/cairn doctor
 ```
 
@@ -94,7 +100,7 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | List, ready, and blocked filtering | Implemented |
 | Durable memory capture, topics, scopes, list, and search | Implemented |
 | Memory relations and timeline context | Implemented |
-| Pin/archive state and session summaries | Planned |
+| Memory pin/archive state, session-summary listing, and context primer | Implemented |
 | Local context domain, discovery, and incremental indexing | Implemented (not yet wired to the CLI) |
 | Unified cross-domain search | Planned |
 | Beads and Engram migration | Planned |
