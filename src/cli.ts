@@ -25,6 +25,9 @@ import {
 } from "./work/work-item.ts";
 import {
   addWorkBlocker,
+  addWorkComment,
+  addWorkLabel,
+  appendWorkNote,
   claimWork,
   clearWorkParent,
   closeWork,
@@ -32,11 +35,14 @@ import {
   listBlockedWork,
   listReadyWork,
   listWork,
+  listWorkComments,
   listWorkDependencies,
   listWorkHistory,
+  listWorkLabels,
   listWorkTree,
   reopenWork,
   removeWorkBlocker,
+  removeWorkLabel,
   showWork,
   setWorkParent,
   updateWork,
@@ -63,6 +69,12 @@ Usage:
   cairn work dep add <blocked-id> <blocker-id> [--if-revision <n>] [--path <path>] [--json]
   cairn work dep remove <blocked-id> <blocker-id> [--if-revision <n>] [--path <path>] [--json]
   cairn work dep list <id> [--direction <blockers|dependents>] [--path <path>] [--json]
+  cairn work label add <id> <label> [--if-revision <n>] [--path <path>] [--json]
+  cairn work label remove <id> <label> [--if-revision <n>] [--path <path>] [--json]
+  cairn work label list <id> [--path <path>] [--json]
+  cairn work note append <id> <text> [--if-revision <n>] [--path <path>] [--json]
+  cairn work comment add <id> <author> <body> [--if-revision <n>] [--path <path>] [--json]
+  cairn work comment list <id> [--path <path>] [--json]
   cairn work ready [--explain] [--path <path>] [--json]
   cairn work blocked [--path <path>] [--json]
   cairn work update <id> [--title <text>] [--description <text>]
@@ -232,6 +244,37 @@ function printReadiness(
   }
 }
 
+function printLabels(labels: readonly string[], json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify(labels, null, 2));
+    return;
+  }
+  if (labels.length === 0) {
+    console.log("No labels.");
+    return;
+  }
+  for (const label of labels) {
+    console.log(label);
+  }
+}
+
+function printComments(
+  comments: Awaited<ReturnType<typeof listWorkComments>>,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(comments, null, 2));
+    return;
+  }
+  if (comments.length === 0) {
+    console.log("No comments.");
+    return;
+  }
+  for (const comment of comments) {
+    console.log(`${comment.createdAt} ${comment.author}: ${comment.body}`);
+  }
+}
+
 async function runWorkCommand(
   arguments_: readonly string[],
   json: boolean,
@@ -324,6 +367,89 @@ async function runWorkCommand(
     }
     throw new WorkItemValidationError(
       `Unknown dependency command: ${operation ?? ""}`,
+    );
+  }
+
+  if (action === "label") {
+    const operation = primary;
+    const id = arguments_[2] ?? "";
+    const label = arguments_[3] ?? "";
+    if (operation === "add") {
+      printResult(
+        await addWorkLabel({
+          expectedRevision: optionalRevision(arguments_),
+          id,
+          label,
+          path,
+        }),
+        json,
+      );
+      return 0;
+    }
+    if (operation === "remove") {
+      printResult(
+        await removeWorkLabel({
+          expectedRevision: optionalRevision(arguments_),
+          id,
+          label,
+          path,
+        }),
+        json,
+      );
+      return 0;
+    }
+    if (operation === "list") {
+      printLabels(await listWorkLabels({ id, path }), json);
+      return 0;
+    }
+    throw new WorkItemValidationError(
+      `Unknown label command: ${operation ?? ""}`,
+    );
+  }
+
+  if (action === "note") {
+    const operation = primary;
+    const id = arguments_[2] ?? "";
+    const note = arguments_[3] ?? "";
+    if (operation === "append") {
+      printResult(
+        await appendWorkNote({
+          expectedRevision: optionalRevision(arguments_),
+          id,
+          note,
+          path,
+        }),
+        json,
+      );
+      return 0;
+    }
+    throw new WorkItemValidationError(
+      `Unknown note command: ${operation ?? ""}`,
+    );
+  }
+
+  if (action === "comment") {
+    const operation = primary;
+    const id = arguments_[2] ?? "";
+    if (operation === "add") {
+      printResult(
+        await addWorkComment({
+          author: arguments_[3] ?? "",
+          body: arguments_[4] ?? "",
+          expectedRevision: optionalRevision(arguments_),
+          id,
+          path,
+        }),
+        json,
+      );
+      return 0;
+    }
+    if (operation === "list") {
+      printComments(await listWorkComments({ id, path }), json);
+      return 0;
+    }
+    throw new WorkItemValidationError(
+      `Unknown comment command: ${operation ?? ""}`,
     );
   }
 

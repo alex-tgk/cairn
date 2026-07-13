@@ -68,6 +68,13 @@ export type WorkReadinessView = WorkItemView &
     reason: string;
   }>;
 
+export type WorkCommentView = Readonly<{
+  author: string;
+  body: string;
+  createdAt: string;
+  revision: number;
+}>;
+
 type WorkContextOptions = Readonly<{
   dataDirectory?: string;
   path: string;
@@ -102,6 +109,10 @@ type BlockerWorkOptions = TransitionWorkOptions &
   Readonly<{ blocker: string }>;
 type DependencyListOptions = ShowWorkOptions &
   Readonly<{ direction: WorkDependencyDirection }>;
+type LabelWorkOptions = TransitionWorkOptions & Readonly<{ label: string }>;
+type NoteWorkOptions = TransitionWorkOptions & Readonly<{ note: string }>;
+type CommentWorkOptions = TransitionWorkOptions &
+  Readonly<{ author: string; body: string }>;
 
 export class WorkItemNotFoundError extends Error {
   readonly code = "work_not_found";
@@ -371,8 +382,105 @@ export async function listWorkDependencies(
   });
 }
 
-function toReadinessView(
-  readiness: "ready" | "blocked",
+export async function addWorkLabel(
+  options: LabelWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const item = await requireWorkItem(repository, projectId, options.id);
+    requireExpectedRevision(item, options.expectedRevision);
+    return toWorkItemView(
+      await repository.addLabel(
+        projectId,
+        item.id,
+        options.label,
+        item.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function removeWorkLabel(
+  options: LabelWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const item = await requireWorkItem(repository, projectId, options.id);
+    requireExpectedRevision(item, options.expectedRevision);
+    return toWorkItemView(
+      await repository.removeLabel(
+        projectId,
+        item.id,
+        options.label,
+        item.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function listWorkLabels(
+  options: ShowWorkOptions,
+): Promise<readonly string[]> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const item = await requireWorkItem(repository, projectId, options.id);
+    return await repository.listLabels(projectId, item.id);
+  });
+}
+
+export async function appendWorkNote(
+  options: NoteWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const item = await requireWorkItem(repository, projectId, options.id);
+    requireExpectedRevision(item, options.expectedRevision);
+    return toWorkItemView(
+      await repository.appendNote(
+        projectId,
+        item.id,
+        options.note,
+        item.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function addWorkComment(
+  options: CommentWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const item = await requireWorkItem(repository, projectId, options.id);
+    requireExpectedRevision(item, options.expectedRevision);
+    return toWorkItemView(
+      await repository.addComment(
+        projectId,
+        item.id,
+        options.author,
+        options.body,
+        item.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function listWorkComments(
+  options: ShowWorkOptions,
+): Promise<readonly WorkCommentView[]> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const item = await requireWorkItem(repository, projectId, options.id);
+    return (await repository.listComments(projectId, item.id)).map(
+      ({ author, body, createdAt, revision }) => ({
+        author,
+        body,
+        createdAt,
+        revision,
+      }),
+    );
+  });
+}
+
+function toReadinessView(  readiness: "ready" | "blocked",
   item: WorkItem,
   blockers: readonly WorkItem[],
 ): WorkReadinessView {
