@@ -11,7 +11,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 69 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 74 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -50,11 +50,11 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - `work note append` for append-only, order-preserving notes
 - `work comment add` and `work comment list` for immutable, authored,
   order-preserving comments sharing the work item's revision sequence
+- List, ready, and blocked filtering by status, priority, type, assignee or
+  unassigned work, labels (AND semantics), parent or roots, and result limit
 
 ## Not implemented
 
-- List, ready, and blocked filtering by status, priority, type, assignee,
-  label, or parent
 - Durable memory, sessions, topics, relations, or timelines
 - Context source discovery, incremental indexing, or user-facing search
 - Beads and Engram import
@@ -63,10 +63,10 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 
 ## Next work slice
 
-Continue essential work tracking:
+Slice 2 (essential work tracking) is complete. Begin Slice 3, durable memory:
 
-1. List, ready, and blocked filtering by status, priority, type, assignee,
-   label, and parent
+1. Memory types, scopes, topics, sessions, relations, search, timeline
+   context, provenance, and session summaries
 2. Stable human and JSON CLI contracts
 3. Tests, documentation, and migration implications in the same work units
 

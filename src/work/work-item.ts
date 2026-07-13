@@ -6,7 +6,12 @@ export const WORK_ITEM_TYPES = [
   "chore",
 ] as const;
 
-export type WorkItemStatus = "open" | "in_progress" | "closed";
+export const WORK_ITEM_STATUSES = [
+  "open",
+  "in_progress",
+  "closed",
+] as const;
+export type WorkItemStatus = (typeof WORK_ITEM_STATUSES)[number];
 export type WorkItemType = (typeof WORK_ITEM_TYPES)[number];
 export type WorkItemEventType =
   | "created"
@@ -187,6 +192,19 @@ export function parseWorkItemType(value: string): WorkItemType {
     default:
       throw new WorkItemValidationError(
         `Work item type must be one of: ${WORK_ITEM_TYPES.join(", ")}`,
+      );
+  }
+}
+
+export function parseWorkItemStatus(value: string): WorkItemStatus {
+  switch (value) {
+    case "open":
+    case "in_progress":
+    case "closed":
+      return value;
+    default:
+      throw new WorkItemValidationError(
+        `Work item status must be one of: ${WORK_ITEM_STATUSES.join(", ")}`,
       );
   }
 }

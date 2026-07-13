@@ -2,7 +2,9 @@ import type {
   WorkItem,
   WorkItemEvent,
   WorkItemId,
+  WorkItemStatus,
   WorkItemTransition,
+  WorkItemType,
 } from "./work-item.ts";
 
 export interface WorkItemRepository {
@@ -52,8 +54,14 @@ export interface WorkItemRepository {
     projectId: string,
     id: WorkItemId,
   ): Promise<readonly WorkItemEvent[]>;
-  listByProject(projectId: string): Promise<readonly WorkItem[]>;
-  listBlocked(projectId: string): Promise<readonly WorkReadiness[]>;
+  listByProject(
+    projectId: string,
+    filter?: WorkItemFilter,
+  ): Promise<readonly WorkItem[]>;
+  listBlocked(
+    projectId: string,
+    filter?: WorkItemFilter,
+  ): Promise<readonly WorkReadiness[]>;
   listComments(
     projectId: string,
     id: WorkItemId,
@@ -64,7 +72,10 @@ export interface WorkItemRepository {
     direction: WorkDependencyDirection,
   ): Promise<readonly WorkDependency[]>;
   listLabels(projectId: string, id: WorkItemId): Promise<readonly string[]>;
-  listReady(projectId: string): Promise<readonly WorkReadiness[]>;
+  listReady(
+    projectId: string,
+    filter?: WorkItemFilter,
+  ): Promise<readonly WorkReadiness[]>;
   listTree(
     projectId: string,
     rootId?: WorkItemId,
@@ -99,6 +110,16 @@ export type WorkItemComment = Readonly<{
   id: number;
   revision: number;
   workItemId: string;
+}>;
+
+export type WorkItemFilter = Readonly<{
+  assignee?: string | null | undefined;
+  labels?: readonly string[] | undefined;
+  limit?: number | undefined;
+  parentId?: WorkItemId | null | undefined;
+  priority?: number | undefined;
+  status?: WorkItemStatus | undefined;
+  type?: WorkItemType | undefined;
 }>;
 
 export type WorkDependencyDirection = "blockers" | "dependents";

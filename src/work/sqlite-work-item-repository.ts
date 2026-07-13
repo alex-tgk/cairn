@@ -33,6 +33,7 @@ import type {
   WorkDependency,
   WorkDependencyDirection,
   WorkItemComment,
+  WorkItemFilter,
   WorkItemRepository,
   WorkReadiness,
   WorkTreeNode,
@@ -107,6 +108,51 @@ function searchBody(item: WorkItem): string {
   return item.notes.length === 0
     ? item.description
     : `${item.description}\n${item.notes}`;
+}
+
+function buildFilterCondition(projectId: string, filter: WorkItemFilter) {
+  const conditions = [sql`item.project_id = ${projectId}`];
+  if (filter.status !== undefined) {
+    conditions.push(sql`item.status = ${filter.status}`);
+  }
+  if (filter.priority !== undefined) {
+    conditions.push(sql`item.priority = ${filter.priority}`);
+  }
+  if (filter.type !== undefined) {
+    conditions.push(sql`item.type = ${filter.type}`);
+  }
+  if (filter.assignee === null) {
+    conditions.push(sql`item.assignee IS NULL`);
+  } else if (filter.assignee !== undefined) {
+    conditions.push(sql`item.assignee = ${filter.assignee}`);
+  }
+  if (filter.parentId === null) {
+    conditions.push(sql`NOT EXISTS (
+      SELECT 1 FROM work_item_hierarchy AS hierarchy
+      WHERE hierarchy.project_id = item.project_id
+        AND hierarchy.child_id = item.id
+    )`);
+  } else if (filter.parentId !== undefined) {
+    conditions.push(sql`EXISTS (
+      SELECT 1 FROM work_item_hierarchy AS hierarchy
+      WHERE hierarchy.project_id = item.project_id
+        AND hierarchy.child_id = item.id
+        AND hierarchy.parent_id = ${filter.parentId.toString()}
+    )`);
+  }
+  for (const label of filter.labels ?? []) {
+    conditions.push(sql`EXISTS (
+      SELECT 1 FROM work_item_labels AS label_row
+      WHERE label_row.project_id = item.project_id
+        AND label_row.work_item_id = item.id
+        AND label_row.label = ${label}
+    )`);
+  }
+  return sql.join(conditions, sql` AND `);
+}
+
+function limitClause(limit: number | undefined) {
+  return limit === undefined ? sql`` : sql`LIMIT ${limit}`;
 }
 
 const UUID_PREFIX_PATTERN = /^[0-9a-f-]+$/u;
@@ -444,11 +490,16 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
     }));
   }
 
-  async listReady(projectId: string): Promise<readonly WorkReadiness[]> {
+  async listReady(
+    projectId: string,
+    filter: WorkItemFilter = {},
+  ): Promise<readonly WorkReadiness[]> {
+    const whereCondition = buildFilterCondition(projectId, filter);
+    const limit = limitClause(filter.limit);
     const rows = await sql<WorkItemRow>`
       SELECT item.*
       FROM work_items AS item
-      WHERE item.project_id = ${projectId}
+      WHERE ${whereCondition}
         AND item.status = 'open'
         AND NOT EXISTS (
           SELECT 1
@@ -461,15 +512,21 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
             AND blocker.status <> 'closed'
         )
       ORDER BY item.priority ASC, item.created_at ASC, item.id ASC
+      ${limit}
     `.execute(this.database.queries);
     return rows.rows.map((row) => ({ blockers: [], item: mapWorkItem(row) }));
   }
 
-  async listBlocked(projectId: string): Promise<readonly WorkReadiness[]> {
+  async listBlocked(
+    projectId: string,
+    filter: WorkItemFilter = {},
+  ): Promise<readonly WorkReadiness[]> {
+    const whereCondition = buildFilterCondition(projectId, filter);
+    const limit = limitClause(filter.limit);
     const rows = await sql<WorkItemRow>`
       SELECT item.*
       FROM work_items AS item
-      WHERE item.project_id = ${projectId}
+      WHERE ${whereCondition}
         AND item.status <> 'closed'
         AND EXISTS (
           SELECT 1
@@ -482,6 +539,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
             AND blocker.status <> 'closed'
         )
       ORDER BY item.priority ASC, item.created_at ASC, item.id ASC
+      ${limit}
     `.execute(this.database.queries);
     return await Promise.all(
       rows.rows.map(async (row) => ({
@@ -677,16 +735,20 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
     return matches.map(mapWorkItem);
   }
 
-  async listByProject(projectId: string): Promise<readonly WorkItem[]> {
-    const rows = await this.database.queries
-      .selectFrom("work_items")
-      .selectAll()
-      .where("project_id", "=", projectId)
-      .orderBy("priority", "asc")
-      .orderBy("created_at", "asc")
-      .orderBy("id", "asc")
-      .execute();
-    return rows.map(mapWorkItem);
+  async listByProject(
+    projectId: string,
+    filter: WorkItemFilter = {},
+  ): Promise<readonly WorkItem[]> {
+    const whereCondition = buildFilterCondition(projectId, filter);
+    const limit = limitClause(filter.limit);
+    const rows = await sql<WorkItemRow>`
+      SELECT item.*
+      FROM work_items AS item
+      WHERE ${whereCondition}
+      ORDER BY item.priority ASC, item.created_at ASC, item.id ASC
+      ${limit}
+    `.execute(this.database.queries);
+    return rows.rows.map(mapWorkItem);
   }
 
   async listEvents(

@@ -8,7 +8,7 @@ The roadmap is ordered by dependency and risk reduction rather than dates.
 | --- | --- | --- |
 | 0. Product and architecture | Scope and durable decisions | Complete |
 | 1. Project and SQLite foundation | Rename-safe identity and executable CLI | Implemented locally |
-| 2. Work tracking | Essential Beads workflows | In progress |
+| 2. Work tracking | Essential Beads workflows | Implemented locally |
 | 3. Durable memory | Essential Engram workflows | Planned |
 | 4. Context and unified search | Essential `agents-context` workflows | Planned |
 | 5. Migration and operations | Safe cutover, backup, and recovery | Planned |
@@ -49,7 +49,7 @@ Current progress:
 - [x] Arbitrary-depth single-parent hierarchy and separate blocking dependencies
 - [x] Ready and blocked explanations
 - [x] Labels, comments, and notes
-- [ ] List, ready, and blocked filtering by status, priority, type, assignee,
+- [x] List, ready, and blocked filtering by status, priority, type, assignee,
       label, and parent
 
 ## Slice 3: durable memory

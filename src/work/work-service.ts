@@ -20,7 +20,7 @@ import {
   type WorkItemType,
 } from "./work-item.ts";
 import type { WorkItemRepository } from "./work-item-repository.ts";
-import type { WorkDependencyDirection } from "./work-item-repository.ts";
+import type { WorkDependencyDirection, WorkItemFilter } from "./work-item-repository.ts";
 
 export type WorkItemView = Readonly<{
   assignee: string | null;
@@ -78,6 +78,18 @@ export type WorkCommentView = Readonly<{
 type WorkContextOptions = Readonly<{
   dataDirectory?: string;
   path: string;
+}>;
+
+type WorkListFilterOptions = Readonly<{
+  assignee?: string | undefined;
+  labels?: readonly string[] | undefined;
+  limit?: number | undefined;
+  parent?: string | undefined;
+  priority?: number | undefined;
+  root?: boolean | undefined;
+  status?: WorkItemStatus | undefined;
+  type?: WorkItemType | undefined;
+  unassigned?: boolean | undefined;
 }>;
 
 type CreateWorkOptions = WorkContextOptions &
@@ -218,6 +230,29 @@ function requireExpectedRevision(
     expectedRevision,
     item.revision,
   );
+}
+
+async function resolveWorkFilter(
+  repository: WorkItemRepository,
+  projectId: string,
+  options: WorkListFilterOptions,
+): Promise<WorkItemFilter> {
+  let parentId: WorkItemId | null | undefined;
+  if (options.root) {
+    parentId = null;
+  } else if (options.parent !== undefined) {
+    const parent = await requireWorkItem(repository, projectId, options.parent);
+    parentId = parent.id;
+  }
+  return {
+    assignee: options.unassigned ? null : options.assignee,
+    labels: options.labels,
+    limit: options.limit,
+    parentId,
+    priority: options.priority,
+    status: options.status,
+    type: options.type,
+  };
 }
 
 async function transitionWork(
@@ -503,23 +538,25 @@ function toReadinessView(  readiness: "ready" | "blocked",
 }
 
 export async function listReadyWork(
-  options: WorkContextOptions,
+  options: WorkContextOptions & WorkListFilterOptions,
 ): Promise<readonly WorkReadinessView[]> {
-  return withWorkRepository(options, async (repository, projectId) =>
-    (await repository.listReady(projectId)).map(({ blockers, item }) =>
-      toReadinessView("ready", item, blockers),
-    ),
-  );
+  return withWorkRepository(options, async (repository, projectId) => {
+    const filter = await resolveWorkFilter(repository, projectId, options);
+    return (await repository.listReady(projectId, filter)).map(
+      ({ blockers, item }) => toReadinessView("ready", item, blockers),
+    );
+  });
 }
 
 export async function listBlockedWork(
-  options: WorkContextOptions,
+  options: WorkContextOptions & WorkListFilterOptions,
 ): Promise<readonly WorkReadinessView[]> {
-  return withWorkRepository(options, async (repository, projectId) =>
-    (await repository.listBlocked(projectId)).map(({ blockers, item }) =>
-      toReadinessView("blocked", item, blockers),
-    ),
-  );
+  return withWorkRepository(options, async (repository, projectId) => {
+    const filter = await resolveWorkFilter(repository, projectId, options);
+    return (await repository.listBlocked(projectId, filter)).map(
+      ({ blockers, item }) => toReadinessView("blocked", item, blockers),
+    );
+  });
 }
 
 export async function showWork(
@@ -537,11 +574,14 @@ export async function showWork(
 }
 
 export async function listWork(
-  options: WorkContextOptions,
+  options: WorkContextOptions & WorkListFilterOptions,
 ): Promise<readonly WorkItemView[]> {
-  return withWorkRepository(options, async (repository, projectId) =>
-    (await repository.listByProject(projectId)).map(toWorkItemView),
-  );
+  return withWorkRepository(options, async (repository, projectId) => {
+    const filter = await resolveWorkFilter(repository, projectId, options);
+    return (await repository.listByProject(projectId, filter)).map(
+      toWorkItemView,
+    );
+  });
 }
 
 export async function claimWork(
