@@ -10,8 +10,8 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Release: `https://github.com/alex-tgk/cairn/releases/tag/v0.1.0`
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
-- Storage: SQLite through `bun:sqlite`
-- Verification: 19 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Storage: SQLite through Kysely 0.28.17 and the pinned `bun:sqlite` dialect
+- Verification: 33 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -32,6 +32,8 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - `work claim`, `work close`, `work reopen`, and `work history`
 - `work update` for title, description, priority, type, and assignment
 - Transactional audit events and synchronized work-item search projections
+- Typed Kysely work-item queries behind an async repository port, with explicit
+  immediate SQLite transactions and embedded migrations preserved
 
 ## Not implemented
 

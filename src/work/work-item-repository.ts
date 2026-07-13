@@ -6,9 +6,12 @@ import type {
 } from "./work-item.ts";
 
 export interface WorkItemRepository {
-  applyTransition(transition: WorkItemTransition): void;
-  create(item: WorkItem): void;
-  findById(projectId: string, id: WorkItemId): WorkItem | null;
-  listEvents(projectId: string, id: WorkItemId): readonly WorkItemEvent[];
-  listByProject(projectId: string): readonly WorkItem[];
+  applyTransition(transition: WorkItemTransition): Promise<void>;
+  create(item: WorkItem): Promise<void>;
+  findById(projectId: string, id: WorkItemId): Promise<WorkItem | null>;
+  listEvents(
+    projectId: string,
+    id: WorkItemId,
+  ): Promise<readonly WorkItemEvent[]>;
+  listByProject(projectId: string): Promise<readonly WorkItem[]>;
 }

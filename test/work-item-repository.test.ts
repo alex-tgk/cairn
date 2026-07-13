@@ -7,6 +7,7 @@ import {
   openCairnDatabase,
   registerProjectWorkspace,
 } from "../src/storage/database.ts";
+import { CairnQueryDatabase } from "../src/storage/query-database.ts";
 import {
   claimWorkItem,
   createWorkItem,
@@ -48,9 +49,10 @@ afterEach(() => {
 });
 
 describe("SQLite work-item repository", () => {
-  test("creates a work item with an audit event and search projection", () => {
+  test("creates a work item with an audit event and search projection", async () => {
     const database = createDatabase();
-    const repository = new SqliteWorkItemRepository(database);
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteWorkItemRepository(queryDatabase);
     const item = createWorkItem({
       description: "Build the first usable work command.",
       id: WorkItemId.from("018f4f32-95d6-7d6d-9f54-1d6d7a6d9a20"),
@@ -61,9 +63,9 @@ describe("SQLite work-item repository", () => {
       type: "feature",
     });
 
-    repository.create(item);
+    await repository.create(item);
 
-    expect(repository.findById(PROJECT_ID, item.id)).toEqual(item);
+    expect(await repository.findById(PROJECT_ID, item.id)).toEqual(item);
     expect(
       database
         .query<{ event_type: string }, []>(
@@ -85,12 +87,13 @@ describe("SQLite work-item repository", () => {
         )
         .get(),
     ).toEqual({ title: "Create work tracking" });
-    database.close();
+    await queryDatabase.close();
   });
 
-  test("lists one project's work by priority, creation time, and id", () => {
+  test("lists one project's work by priority, creation time, and id", async () => {
     const database = createDatabase();
-    const repository = new SqliteWorkItemRepository(database);
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteWorkItemRepository(queryDatabase);
     const fixtures = [
       createWorkItem({
         id: WorkItemId.from("work-b"),
@@ -116,41 +119,45 @@ describe("SQLite work-item repository", () => {
     ];
 
     for (const item of fixtures) {
-      repository.create(item);
+      await repository.create(item);
     }
 
     expect(
-      repository.listByProject(PROJECT_ID).map(({ id }) => id.toString()),
+      (await repository.listByProject(PROJECT_ID)).map(({ id }) => id.toString()),
     ).toEqual(["work-a", "work-b"]);
     expect(
-      repository.findById(PROJECT_ID, WorkItemId.from("work-other")),
+      await repository.findById(
+        PROJECT_ID,
+        WorkItemId.from("work-other"),
+      ),
     ).toBeNull();
-    database.close();
+    await queryDatabase.close();
   });
 
-  test("persists lifecycle changes and returns their audit history", () => {
+  test("persists lifecycle changes and returns their audit history", async () => {
     const database = createDatabase();
-    const repository = new SqliteWorkItemRepository(database);
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteWorkItemRepository(queryDatabase);
     const item = createWorkItem({
       id: WorkItemId.from("work-lifecycle"),
       now: "2026-07-12T13:00:00.000Z",
       projectId: PROJECT_ID,
       title: "Preserve lifecycle history",
     });
-    repository.create(item);
+    await repository.create(item);
     const claimed = claimWorkItem(
       item,
       "agent-codex",
       "2026-07-12T14:00:00.000Z",
     );
 
-    repository.applyTransition(claimed);
+    await repository.applyTransition(claimed);
 
-    expect(repository.findById(PROJECT_ID, item.id)).toMatchObject({
+    expect(await repository.findById(PROJECT_ID, item.id)).toMatchObject({
       assignee: "agent-codex",
       status: "in_progress",
     });
-    expect(repository.listEvents(PROJECT_ID, item.id)).toEqual([
+    expect(await repository.listEvents(PROJECT_ID, item.id)).toEqual([
       {
         createdAt: "2026-07-12T13:00:00.000Z",
         eventType: "created",
@@ -173,6 +180,49 @@ describe("SQLite work-item repository", () => {
         )
         .get(item.id.toString()),
     ).toEqual({ tags: "task in_progress p2" });
-    database.close();
+    await queryDatabase.close();
+  });
+
+  test("rolls back item creation when its search projection conflicts", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteWorkItemRepository(queryDatabase);
+    const item = createWorkItem({
+      id: WorkItemId.from("work-conflict"),
+      now: "2026-07-12T13:00:00.000Z",
+      projectId: PROJECT_ID,
+      title: "Preserve atomic creation",
+    });
+    database
+      .query<void, [string, string, string, string, string]>(
+        `INSERT INTO search_entries(
+           entity_kind, entity_id, project_id, title, body, created_at, updated_at
+         ) VALUES ('work_item', ?, ?, ?, '', ?, ?)`,
+      )
+      .run(
+        item.id.toString(),
+        PROJECT_ID,
+        item.title.toString(),
+        item.createdAt,
+        item.updatedAt,
+      );
+
+    await expect(repository.create(item)).rejects.toThrow();
+
+    expect(
+      database
+        .query<{ count: number }, [string]>(
+          "SELECT COUNT(*) AS count FROM work_items WHERE id = ?",
+        )
+        .get(item.id.toString()),
+    ).toEqual({ count: 0 });
+    expect(
+      database
+        .query<{ count: number }, [string]>(
+          "SELECT COUNT(*) AS count FROM work_item_events WHERE work_item_id = ?",
+        )
+        .get(item.id.toString()),
+    ).toEqual({ count: 0 });
+    await queryDatabase.close();
   });
 });

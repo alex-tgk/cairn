@@ -1,5 +1,14 @@
-import type { Database } from "bun:sqlite";
+import {
+  type Kysely,
+  type Selectable,
+} from "kysely";
 
+import {
+  type CairnDatabaseSchema,
+  CairnQueryDatabase,
+  type WorkItemEventTable,
+  type WorkItemTable,
+} from "../storage/query-database.ts";
 import {
   restoreWorkItem,
   WorkItemId,
@@ -9,41 +18,12 @@ import {
   type WorkItemEvent,
   type WorkItemEventDraft,
   type WorkItemEventPayload,
-  type WorkItemEventType,
-  type WorkItemStatus,
   type WorkItemTransition,
-  type WorkItemType,
 } from "./work-item.ts";
 import type { WorkItemRepository } from "./work-item-repository.ts";
 
-type WorkItemRow = Readonly<{
-  assignee: string | null;
-  claimed_at: string | null;
-  closed_at: string | null;
-  created_at: string;
-  description: string;
-  id: string;
-  priority: number;
-  project_id: string;
-  status: WorkItemStatus;
-  title: string;
-  type: WorkItemType;
-  updated_at: string;
-}>;
-
-type WorkItemEventRow = Readonly<{
-  created_at: string;
-  event_type: WorkItemEventType;
-  id: number;
-  payload_json: string;
-  work_item_id: string;
-}>;
-
-const SELECT_WORK_ITEM = `
-  SELECT id, project_id, title, description, status, priority, type, assignee,
-         created_at, updated_at, claimed_at, closed_at
-  FROM work_items
-`;
+type WorkItemRow = Selectable<WorkItemTable>;
+type WorkItemEventRow = Selectable<WorkItemEventTable>;
 
 function mapWorkItem(row: WorkItemRow): WorkItem {
   return restoreWorkItem({
@@ -88,107 +68,101 @@ function mapWorkItemEvent(row: WorkItemEventRow): WorkItemEvent {
   };
 }
 
+function searchTags(item: WorkItem): string {
+  return `${item.type} ${item.status} p${item.priority.toNumber()}`;
+}
+
 export class SqliteWorkItemRepository implements WorkItemRepository {
-  constructor(private readonly database: Database) {}
+  constructor(private readonly database: CairnQueryDatabase) {}
 
-  create(item: WorkItem): void {
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      this.insertWorkItem(item);
-      this.insertCreatedEvent(item);
-      this.insertSearchProjection(item);
-      this.database.exec("COMMIT");
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
+  async create(item: WorkItem): Promise<void> {
+    await this.database.immediateTransaction(async (database) => {
+      await this.insertWorkItem(database, item);
+      await this.insertCreatedEvent(database, item);
+      await this.insertSearchProjection(database, item);
+    });
   }
 
-  applyTransition(transition: WorkItemTransition): void {
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      this.updateWorkItem(transition.item);
-      this.insertEvent(transition.item.id, transition.event);
-      this.updateSearchProjection(transition.item);
-      this.database.exec("COMMIT");
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
+  async applyTransition(transition: WorkItemTransition): Promise<void> {
+    await this.database.immediateTransaction(async (database) => {
+      await this.updateWorkItem(database, transition.item);
+      await this.insertEvent(database, transition.item.id, transition.event);
+      await this.updateSearchProjection(database, transition.item);
+    });
   }
 
-  findById(projectId: string, id: WorkItemId): WorkItem | null {
-    const row = this.database
-      .query<WorkItemRow, [string, string]>(
-        `${SELECT_WORK_ITEM} WHERE project_id = ? AND id = ?`,
-      )
-      .get(projectId, id.toString());
+  async findById(projectId: string, id: WorkItemId): Promise<WorkItem | null> {
+    const row = await this.database.queries
+      .selectFrom("work_items")
+      .selectAll()
+      .where("project_id", "=", projectId)
+      .where("id", "=", id.toString())
+      .executeTakeFirst();
     return row ? mapWorkItem(row) : null;
   }
 
-  listByProject(projectId: string): readonly WorkItem[] {
-    return this.database
-      .query<WorkItemRow, [string]>(
-        `${SELECT_WORK_ITEM}
-         WHERE project_id = ?
-         ORDER BY priority ASC, created_at ASC, id ASC`,
-      )
-      .all(projectId)
-      .map(mapWorkItem);
+  async listByProject(projectId: string): Promise<readonly WorkItem[]> {
+    const rows = await this.database.queries
+      .selectFrom("work_items")
+      .selectAll()
+      .where("project_id", "=", projectId)
+      .orderBy("priority", "asc")
+      .orderBy("created_at", "asc")
+      .orderBy("id", "asc")
+      .execute();
+    return rows.map(mapWorkItem);
   }
 
-  listEvents(projectId: string, id: WorkItemId): readonly WorkItemEvent[] {
-    return this.database
-      .query<WorkItemEventRow, [string, string]>(
-        `SELECT event.id, event.work_item_id, event.event_type,
-                event.payload_json, event.created_at
-         FROM work_item_events AS event
-         INNER JOIN work_items AS item ON item.id = event.work_item_id
-         WHERE item.project_id = ? AND item.id = ?
-         ORDER BY event.created_at ASC, event.id ASC`,
-      )
-      .all(projectId, id.toString())
-      .map(mapWorkItemEvent);
+  async listEvents(
+    projectId: string,
+    id: WorkItemId,
+  ): Promise<readonly WorkItemEvent[]> {
+    const rows = await this.database.queries
+      .selectFrom("work_item_events as event")
+      .innerJoin("work_items as item", "item.id", "event.work_item_id")
+      .select([
+        "event.id",
+        "event.work_item_id",
+        "event.event_type",
+        "event.payload_json",
+        "event.created_at",
+      ])
+      .where("item.project_id", "=", projectId)
+      .where("item.id", "=", id.toString())
+      .orderBy("event.created_at", "asc")
+      .orderBy("event.id", "asc")
+      .execute();
+    return rows.map(mapWorkItemEvent);
   }
 
-  private insertWorkItem(item: WorkItem): void {
-    this.database
-      .query<
-        void,
-        [
-          string,
-          string,
-          string,
-          string,
-          WorkItemStatus,
-          number,
-          WorkItemType,
-          string | null,
-          string,
-          string,
-        ]
-      >(
-        `INSERT INTO work_items(
-           id, project_id, title, description, status, priority, type,
-           assignee, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        item.id.toString(),
-        item.projectId,
-        item.title.toString(),
-        item.description,
-        item.status,
-        item.priority.toNumber(),
-        item.type,
-        item.assignee,
-        item.createdAt,
-        item.updatedAt,
-      );
+  private async insertWorkItem(
+    database: Kysely<CairnDatabaseSchema>,
+    item: WorkItem,
+  ): Promise<void> {
+    await database
+      .insertInto("work_items")
+      .values({
+        assignee: item.assignee,
+        claimed_at: item.claimedAt,
+        closed_at: item.closedAt,
+        created_at: item.createdAt,
+        description: item.description,
+        id: item.id.toString(),
+        priority: item.priority.toNumber(),
+        project_id: item.projectId,
+        status: item.status,
+        title: item.title.toString(),
+        type: item.type,
+        updated_at: item.updatedAt,
+      })
+      .execute();
   }
 
-  private insertCreatedEvent(item: WorkItem): void {
-    this.insertEvent(item.id, {
+  private async insertCreatedEvent(
+    database: Kysely<CairnDatabaseSchema>,
+    item: WorkItem,
+  ): Promise<void> {
+    await this.insertEvent(database, item.id, {
       createdAt: item.createdAt,
       eventType: "created",
       payload: {
@@ -199,103 +173,88 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
     });
   }
 
-  private insertSearchProjection(item: WorkItem): void {
-    const tags = `${item.type} ${item.status} p${item.priority.toNumber()}`;
-    this.database
-      .query<
-        void,
-        [string, string, string, string, string, string, string]
-      >(
-        `INSERT INTO search_entries(
-           entity_kind, entity_id, project_id, title, body, tags,
-           created_at, updated_at
-         ) VALUES ('work_item', ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        item.id.toString(),
-        item.projectId,
-        item.title.toString(),
-        item.description,
-        tags,
-        item.createdAt,
-        item.updatedAt,
-      );
+  private async insertSearchProjection(
+    database: Kysely<CairnDatabaseSchema>,
+    item: WorkItem,
+  ): Promise<void> {
+    await database
+      .insertInto("search_entries")
+      .values({
+        body: item.description,
+        created_at: item.createdAt,
+        entity_id: item.id.toString(),
+        entity_kind: "work_item",
+        project_id: item.projectId,
+        source_path: null,
+        tags: searchTags(item),
+        title: item.title.toString(),
+        updated_at: item.updatedAt,
+        workspace_id: null,
+      })
+      .execute();
   }
 
-  private updateWorkItem(item: WorkItem): void {
-    const result = this.database
-      .query<
-        void,
-        [
-          string,
-          string,
-          WorkItemStatus,
-          number,
-          WorkItemType,
-          string | null,
-          string,
-          string | null,
-          string | null,
-          string,
-          string,
-        ]
-      >(
-        `UPDATE work_items
-         SET title = ?, description = ?, status = ?, priority = ?, type = ?,
-             assignee = ?, updated_at = ?, claimed_at = ?, closed_at = ?
-         WHERE project_id = ? AND id = ?`,
-      )
-      .run(
-        item.title.toString(),
-        item.description,
-        item.status,
-        item.priority.toNumber(),
-        item.type,
-        item.assignee,
-        item.updatedAt,
-        item.claimedAt,
-        item.closedAt,
-        item.projectId,
-        item.id.toString(),
-      );
-    if (result.changes === 0) {
+  private async updateWorkItem(
+    database: Kysely<CairnDatabaseSchema>,
+    item: WorkItem,
+  ): Promise<void> {
+    const result = await database
+      .updateTable("work_items")
+      .set({
+        assignee: item.assignee,
+        claimed_at: item.claimedAt,
+        closed_at: item.closedAt,
+        description: item.description,
+        priority: item.priority.toNumber(),
+        status: item.status,
+        title: item.title.toString(),
+        type: item.type,
+        updated_at: item.updatedAt,
+      })
+      .where("project_id", "=", item.projectId)
+      .where("id", "=", item.id.toString())
+      .executeTakeFirst();
+    if (result.numUpdatedRows === 0n) {
       throw new Error(`Work item not found: ${item.id.toString()}`);
     }
   }
 
-  private insertEvent(id: WorkItemId, event: WorkItemEventDraft): void {
-    this.database
-      .query<void, [string, WorkItemEventType, string, string]>(
-        `INSERT INTO work_item_events(
-           work_item_id, event_type, payload_json, created_at
-         ) VALUES (?, ?, ?, ?)`,
-      )
-      .run(
-        id.toString(),
-        event.eventType,
-        JSON.stringify(event.payload),
-        event.createdAt,
-      );
+  private async insertEvent(
+    database: Kysely<CairnDatabaseSchema>,
+    id: WorkItemId,
+    event: WorkItemEventDraft,
+  ): Promise<void> {
+    await database
+      .insertInto("work_item_events")
+      .values({
+        created_at: event.createdAt,
+        event_type: event.eventType,
+        payload_json: JSON.stringify(event.payload),
+        work_item_id: id.toString(),
+      })
+      .execute();
   }
 
-  private updateSearchProjection(item: WorkItem): void {
-    const tags = `${item.type} ${item.status} p${item.priority.toNumber()}`;
-    const result = this.database
-      .query<void, [string, string, string, string, string, string]>(
-        `UPDATE search_entries
-         SET title = ?, body = ?, tags = ?, updated_at = ?
-         WHERE entity_kind = 'work_item' AND entity_id = ? AND project_id = ?`,
-      )
-      .run(
-        item.title.toString(),
-        item.description,
-        tags,
-        item.updatedAt,
-        item.id.toString(),
-        item.projectId,
+  private async updateSearchProjection(
+    database: Kysely<CairnDatabaseSchema>,
+    item: WorkItem,
+  ): Promise<void> {
+    const result = await database
+      .updateTable("search_entries")
+      .set({
+        body: item.description,
+        tags: searchTags(item),
+        title: item.title.toString(),
+        updated_at: item.updatedAt,
+      })
+      .where("entity_kind", "=", "work_item")
+      .where("entity_id", "=", item.id.toString())
+      .where("project_id", "=", item.projectId)
+      .executeTakeFirst();
+    if (result.numUpdatedRows === 0n) {
+      throw new Error(
+        `Work-item search projection not found: ${item.id.toString()}`,
       );
-    if (result.changes === 0) {
-      throw new Error(`Work-item search projection not found: ${item.id.toString()}`);
     }
   }
 }

@@ -105,7 +105,7 @@ function printResult(value: object, json: boolean): void {
 }
 
 function printWorkList(
-  items: ReturnType<typeof listWork>,
+  items: Awaited<ReturnType<typeof listWork>>,
   json: boolean,
 ): void {
   if (json) {
@@ -124,7 +124,7 @@ function printWorkList(
 }
 
 function printWorkHistory(
-  events: ReturnType<typeof listWorkHistory>,
+  events: Awaited<ReturnType<typeof listWorkHistory>>,
   json: boolean,
 ): void {
   if (json) {
@@ -138,7 +138,10 @@ function printWorkHistory(
   }
 }
 
-function runWorkCommand(arguments_: readonly string[], json: boolean): number {
+async function runWorkCommand(
+  arguments_: readonly string[],
+  json: boolean,
+): Promise<number> {
   const [action, primary] = arguments_;
   const path = optionValue(arguments_, "--path") ?? process.cwd();
 
@@ -146,7 +149,7 @@ function runWorkCommand(arguments_: readonly string[], json: boolean): number {
     const priorityValue = optionValue(arguments_, "--priority");
     const typeValue = optionValue(arguments_, "--type");
     printResult(
-      createWork({
+      await createWork({
         assignee: optionValue(arguments_, "--assignee"),
         description: optionValue(arguments_, "--description"),
         path,
@@ -160,18 +163,18 @@ function runWorkCommand(arguments_: readonly string[], json: boolean): number {
   }
 
   if (action === "show") {
-    printResult(showWork({ id: primary ?? "", path }), json);
+    printResult(await showWork({ id: primary ?? "", path }), json);
     return 0;
   }
 
   if (action === "list") {
-    printWorkList(listWork({ path }), json);
+    printWorkList(await listWork({ path }), json);
     return 0;
   }
 
   if (action === "claim") {
     printResult(
-      claimWork({
+      await claimWork({
         assignee: optionValue(arguments_, "--assignee") ?? "",
         id: primary ?? "",
         path,
@@ -182,23 +185,26 @@ function runWorkCommand(arguments_: readonly string[], json: boolean): number {
   }
 
   if (action === "close") {
-    printResult(closeWork({ id: primary ?? "", path }), json);
+    printResult(await closeWork({ id: primary ?? "", path }), json);
     return 0;
   }
 
   if (action === "reopen") {
-    printResult(reopenWork({ id: primary ?? "", path }), json);
+    printResult(await reopenWork({ id: primary ?? "", path }), json);
     return 0;
   }
 
   if (action === "history") {
-    printWorkHistory(listWorkHistory({ id: primary ?? "", path }), json);
+    printWorkHistory(
+      await listWorkHistory({ id: primary ?? "", path }),
+      json,
+    );
     return 0;
   }
 
   if (action === "update") {
     printResult(
-      updateWork({
+      await updateWork({
         changes: workItemChanges(arguments_),
         id: primary ?? "",
         path,
@@ -211,7 +217,7 @@ function runWorkCommand(arguments_: readonly string[], json: boolean): number {
   throw new Error(`Unknown Cairn work command: ${action ?? ""}`);
 }
 
-export function runCli(arguments_: readonly string[]): number {
+export async function runCli(arguments_: readonly string[]): Promise<number> {
   if (arguments_.length === 0 || hasFlag(arguments_, "--help") || hasFlag(arguments_, "-h")) {
     console.log(HELP);
     return 0;
@@ -256,7 +262,7 @@ export function runCli(arguments_: readonly string[]): number {
   }
 
   if (command === "work") {
-    return runWorkCommand(commandArguments, json);
+    return await runWorkCommand(commandArguments, json);
   }
 
   console.error(`Unknown Cairn command: ${command ?? ""}`);
@@ -266,7 +272,7 @@ export function runCli(arguments_: readonly string[]): number {
 
 if (import.meta.main) {
   try {
-    process.exitCode = runCli(process.argv.slice(2));
+    process.exitCode = await runCli(process.argv.slice(2));
   } catch (error) {
     if (error instanceof ProjectNotFoundError) {
       console.error(error.message);

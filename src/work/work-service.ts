@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { getProjectStatus } from "../project/project-service.ts";
 import { openCairnDatabase } from "../storage/database.ts";
+import { CairnQueryDatabase } from "../storage/query-database.ts";
 import { SqliteWorkItemRepository } from "./sqlite-work-item-repository.ts";
 import {
   claimWorkItem,
@@ -88,37 +89,45 @@ function toWorkItemView(item: WorkItem): WorkItemView {
   };
 }
 
-function withWorkRepository<Result>(
+async function withWorkRepository<Result>(
   options: WorkContextOptions,
-  action: (repository: WorkItemRepository, projectId: string) => Result,
-): Result {
+  action: (
+    repository: WorkItemRepository,
+    projectId: string,
+  ) => Promise<Result>,
+): Promise<Result> {
   const project = resolveWorkProject(options);
-  const database = openCairnDatabase(project.databasePath);
+  const database = new CairnQueryDatabase(
+    openCairnDatabase(project.databasePath),
+  );
   try {
-    return action(new SqliteWorkItemRepository(database), project.projectId);
+    return await action(
+      new SqliteWorkItemRepository(database),
+      project.projectId,
+    );
   } finally {
-    database.close();
+    await database.close();
   }
 }
 
-function requireWorkItem(
+async function requireWorkItem(
   repository: WorkItemRepository,
   projectId: string,
   id: WorkItemId,
-): WorkItem {
-  const item = repository.findById(projectId, id);
+): Promise<WorkItem> {
+  const item = await repository.findById(projectId, id);
   if (!item) {
     throw new WorkItemNotFoundError(`Work item not found: ${id.toString()}`);
   }
   return item;
 }
 
-function transitionWork(
+async function transitionWork(
   options: TransitionWorkOptions,
   transition: (item: WorkItem, now: string) => WorkItemTransition,
-): WorkItemView {
-  return withWorkRepository(options, (repository, projectId) => {
-    const item = requireWorkItem(
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const item = await requireWorkItem(
       repository,
       projectId,
       WorkItemId.from(options.id),
@@ -127,13 +136,15 @@ function transitionWork(
       item,
       (options.now ?? (() => new Date().toISOString()))(),
     );
-    repository.applyTransition(result);
+    await repository.applyTransition(result);
     return toWorkItemView(result.item);
   });
 }
 
-export function createWork(options: CreateWorkOptions): WorkItemView {
-  return withWorkRepository(options, (repository, projectId) => {
+export async function createWork(
+  options: CreateWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
     const item = createWorkItem({
       assignee: options.assignee,
       description: options.description,
@@ -144,51 +155,67 @@ export function createWork(options: CreateWorkOptions): WorkItemView {
       title: options.title,
       type: options.type,
     });
-    repository.create(item);
+    await repository.create(item);
     return toWorkItemView(item);
   });
 }
 
-export function showWork(options: ShowWorkOptions): WorkItemView {
-  return withWorkRepository(options, (repository, projectId) =>
+export async function showWork(
+  options: ShowWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) =>
     toWorkItemView(
-      requireWorkItem(repository, projectId, WorkItemId.from(options.id)),
+      await requireWorkItem(
+        repository,
+        projectId,
+        WorkItemId.from(options.id),
+      ),
     ),
   );
 }
 
-export function listWork(options: WorkContextOptions): readonly WorkItemView[] {
-  return withWorkRepository(options, (repository, projectId) =>
-    repository.listByProject(projectId).map(toWorkItemView),
+export async function listWork(
+  options: WorkContextOptions,
+): Promise<readonly WorkItemView[]> {
+  return withWorkRepository(options, async (repository, projectId) =>
+    (await repository.listByProject(projectId)).map(toWorkItemView),
   );
 }
 
-export function claimWork(options: ClaimWorkOptions): WorkItemView {
+export async function claimWork(
+  options: ClaimWorkOptions,
+): Promise<WorkItemView> {
   return transitionWork(options, (item, now) =>
     claimWorkItem(item, options.assignee, now),
   );
 }
 
-export function closeWork(options: TransitionWorkOptions): WorkItemView {
+export async function closeWork(
+  options: TransitionWorkOptions,
+): Promise<WorkItemView> {
   return transitionWork(options, closeWorkItem);
 }
 
-export function reopenWork(options: TransitionWorkOptions): WorkItemView {
+export async function reopenWork(
+  options: TransitionWorkOptions,
+): Promise<WorkItemView> {
   return transitionWork(options, reopenWorkItem);
 }
 
-export function updateWork(options: UpdateWorkOptions): WorkItemView {
+export async function updateWork(
+  options: UpdateWorkOptions,
+): Promise<WorkItemView> {
   return transitionWork(options, (item, now) =>
     updateWorkItem(item, options.changes, now),
   );
 }
 
-export function listWorkHistory(
+export async function listWorkHistory(
   options: ShowWorkOptions,
-): readonly WorkItemEvent[] {
-  return withWorkRepository(options, (repository, projectId) => {
+): Promise<readonly WorkItemEvent[]> {
+  return withWorkRepository(options, async (repository, projectId) => {
     const id = WorkItemId.from(options.id);
-    requireWorkItem(repository, projectId, id);
-    return repository.listEvents(projectId, id);
+    await requireWorkItem(repository, projectId, id);
+    return await repository.listEvents(projectId, id);
   });
 }
