@@ -202,6 +202,8 @@ describe("SQLite memory repository", () => {
     expect(titles).toContain("Project memory");
     expect(titles).toContain("Personal memory");
     expect(titles).not.toContain("Other project memory");
+
+    await queryDatabase.close();
   });
 
   test("filters listed memories by type, scope, and topic", async () => {
