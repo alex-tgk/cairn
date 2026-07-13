@@ -32,7 +32,13 @@ bun run build
 ./dist/cairn init /path/to/project
 ./dist/cairn status /path/to/project
 ./dist/cairn work create "Implement the next slice" --priority 1 --type feature
+./dist/cairn work create "Implement a child" --parent <parent-id>
 ./dist/cairn work list
+./dist/cairn work tree [<root-id>]
+./dist/cairn work dep add <blocked-id> <blocker-id>
+./dist/cairn work dep list <blocked-id>
+./dist/cairn work blocked
+./dist/cairn work ready --explain
 ./dist/cairn work show <work-item-id>
 ./dist/cairn work update <work-item-id> --priority 0 --assignee agent-name
 ./dist/cairn work claim <work-item-id> --assignee agent-name
@@ -65,7 +71,9 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | Source release and Homebrew Formula | Implemented |
 | Prebuilt release executables and Homebrew bottles | Planned |
 | Work capture, editing, listing, lifecycle, and history | Implemented |
-| Dependencies, comments, and labels | In progress |
+| Arbitrary-depth, single-parent work hierarchy | Implemented |
+| Blocking dependencies and ready/blocked explanations | Implemented |
+| Comments, labels, and notes | Planned |
 | Durable memory | Planned |
 | Local context indexing and unified search | Planned |
 | Beads and Engram migration | Planned |

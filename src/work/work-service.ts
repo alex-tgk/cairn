@@ -20,6 +20,7 @@ import {
   type WorkItemType,
 } from "./work-item.ts";
 import type { WorkItemRepository } from "./work-item-repository.ts";
+import type { WorkDependencyDirection } from "./work-item-repository.ts";
 
 export type WorkItemView = Readonly<{
   assignee: string | null;
@@ -39,6 +40,34 @@ export type WorkItemView = Readonly<{
   updatedAt: string;
 }>;
 
+export type WorkTreeNodeView = WorkItemView &
+  Readonly<{
+    depth: number;
+    parentId: string | null;
+    parentShortId: string | null;
+  }>;
+
+export type WorkDependencyView = Readonly<{
+  blockedId: string;
+  blockedShortId: string;
+  blockerId: string;
+  blockerShortId: string;
+  createdAt: string;
+  relatedItem: WorkItemView;
+}>;
+
+export type WorkReadinessView = WorkItemView &
+  Readonly<{
+    blockers: readonly Readonly<{
+      id: string;
+      shortId: string;
+      status: WorkItemStatus;
+      title: string;
+    }>[];
+    readiness: "ready" | "blocked";
+    reason: string;
+  }>;
+
 type WorkContextOptions = Readonly<{
   dataDirectory?: string;
   path: string;
@@ -51,6 +80,7 @@ type CreateWorkOptions = WorkContextOptions &
     idFactory?: (() => string) | undefined;
     now?: (() => string) | undefined;
     priority?: number | undefined;
+    parent?: string | undefined;
     title: string;
     type?: WorkItemType | undefined;
   }>;
@@ -64,6 +94,14 @@ type TransitionWorkOptions = ShowWorkOptions &
 type ClaimWorkOptions = TransitionWorkOptions & Readonly<{ assignee: string }>;
 type UpdateWorkOptions = TransitionWorkOptions &
   Readonly<{ changes: WorkItemChanges }>;
+type ParentWorkOptions = TransitionWorkOptions &
+  Readonly<{ parent?: string | undefined }>;
+type TreeWorkOptions = WorkContextOptions &
+  Readonly<{ root?: string | undefined }>;
+type BlockerWorkOptions = TransitionWorkOptions &
+  Readonly<{ blocker: string }>;
+type DependencyListOptions = ShowWorkOptions &
+  Readonly<{ direction: WorkDependencyDirection }>;
 
 export class WorkItemNotFoundError extends Error {
   readonly code = "work_not_found";
@@ -198,6 +236,9 @@ export async function createWork(
   options: CreateWorkOptions,
 ): Promise<WorkItemView> {
   return withWorkRepository(options, async (repository, projectId) => {
+    const parent = options.parent === undefined
+      ? undefined
+      : await requireWorkItem(repository, projectId, options.parent);
     const item = createWorkItem({
       assignee: options.assignee,
       description: options.description,
@@ -208,9 +249,169 @@ export async function createWork(
       title: options.title,
       type: options.type,
     });
-    await repository.create(item);
+    await repository.create(item, parent?.id);
     return toWorkItemView(item);
   });
+}
+
+export async function setWorkParent(
+  options: ParentWorkOptions & Readonly<{ parent: string }>,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const child = await requireWorkItem(repository, projectId, options.id);
+    const parent = await requireWorkItem(repository, projectId, options.parent);
+    requireExpectedRevision(child, options.expectedRevision);
+    return toWorkItemView(
+      await repository.setParent(
+        projectId,
+        child.id,
+        parent.id,
+        child.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function clearWorkParent(
+  options: ParentWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const child = await requireWorkItem(repository, projectId, options.id);
+    requireExpectedRevision(child, options.expectedRevision);
+    return toWorkItemView(
+      await repository.clearParent(
+        projectId,
+        child.id,
+        child.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function listWorkTree(
+  options: TreeWorkOptions,
+): Promise<readonly WorkTreeNodeView[]> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const root = options.root === undefined
+      ? undefined
+      : await requireWorkItem(repository, projectId, options.root);
+    return (await repository.listTree(projectId, root?.id)).map(
+      ({ depth, item, parentId }) => {
+        const parent = parentId?.toString() ?? null;
+        return {
+          ...toWorkItemView(item),
+          depth,
+          parentId: parent,
+          parentShortId: parent?.replaceAll("-", "").slice(0, 8) ?? null,
+        };
+      },
+    );
+  });
+}
+
+export async function addWorkBlocker(
+  options: BlockerWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const blocked = await requireWorkItem(repository, projectId, options.id);
+    const blocker = await requireWorkItem(repository, projectId, options.blocker);
+    requireExpectedRevision(blocked, options.expectedRevision);
+    return toWorkItemView(
+      await repository.addBlocker(
+        projectId,
+        blocked.id,
+        blocker.id,
+        blocked.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function removeWorkBlocker(
+  options: BlockerWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const blocked = await requireWorkItem(repository, projectId, options.id);
+    const blocker = await requireWorkItem(repository, projectId, options.blocker);
+    requireExpectedRevision(blocked, options.expectedRevision);
+    return toWorkItemView(
+      await repository.removeBlocker(
+        projectId,
+        blocked.id,
+        blocker.id,
+        blocked.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function listWorkDependencies(
+  options: DependencyListOptions,
+): Promise<readonly WorkDependencyView[]> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const item = await requireWorkItem(repository, projectId, options.id);
+    return (
+      await repository.listDependencies(projectId, item.id, options.direction)
+    ).map(({ blockedId, blockerId, createdAt, relatedItem }) => {
+      const blocked = blockedId.toString();
+      const blocker = blockerId.toString();
+      return {
+        blockedId: blocked,
+        blockedShortId: blocked.replaceAll("-", "").slice(0, 8),
+        blockerId: blocker,
+        blockerShortId: blocker.replaceAll("-", "").slice(0, 8),
+        createdAt,
+        relatedItem: toWorkItemView(relatedItem),
+      };
+    });
+  });
+}
+
+function toReadinessView(
+  readiness: "ready" | "blocked",
+  item: WorkItem,
+  blockers: readonly WorkItem[],
+): WorkReadinessView {
+  return {
+    ...toWorkItemView(item),
+    blockers: blockers.map((blocker) => {
+      const id = blocker.id.toString();
+      return {
+        id,
+        shortId: id.replaceAll("-", "").slice(0, 8),
+        status: blocker.status,
+        title: blocker.title.toString(),
+      };
+    }),
+    readiness,
+    reason: readiness === "ready"
+      ? "Open with no active blockers"
+      : `Blocked by ${blockers.length} active blocker${blockers.length === 1 ? "" : "s"}`,
+  };
+}
+
+export async function listReadyWork(
+  options: WorkContextOptions,
+): Promise<readonly WorkReadinessView[]> {
+  return withWorkRepository(options, async (repository, projectId) =>
+    (await repository.listReady(projectId)).map(({ blockers, item }) =>
+      toReadinessView("ready", item, blockers),
+    ),
+  );
+}
+
+export async function listBlockedWork(
+  options: WorkContextOptions,
+): Promise<readonly WorkReadinessView[]> {
+  return withWorkRepository(options, async (repository, projectId) =>
+    (await repository.listBlocked(projectId)).map(({ blockers, item }) =>
+      toReadinessView("blocked", item, blockers),
+    ),
+  );
 }
 
 export async function showWork(

@@ -13,7 +13,11 @@ export type WorkItemEventType =
   | "updated"
   | "claimed"
   | "closed"
-  | "reopened";
+  | "reopened"
+  | "parent_set"
+  | "parent_cleared"
+  | "dependency_added"
+  | "dependency_removed";
 export type WorkItemEventPayload = Readonly<
   Record<string, string | number | null>
 >;
@@ -57,6 +61,37 @@ export class WorkItemClaimConflictError extends Error {
         ? `Work item cannot be claimed: ${workItemId}`
         : `Work item is already assigned to ${currentAssignee}: ${workItemId}`,
     );
+  }
+}
+
+export type WorkItemRelationErrorCode =
+  | "self_parent"
+  | "self_dependency"
+  | "cross_project_relation"
+  | "hierarchy_cycle"
+  | "dependency_cycle";
+
+export class WorkItemRelationError extends Error {
+  override readonly name = "WorkItemRelationError";
+
+  constructor(
+    readonly code: WorkItemRelationErrorCode,
+    readonly workItemId: string,
+    readonly relatedWorkItemId: string,
+  ) {
+    super(`${code}: ${workItemId} -> ${relatedWorkItemId}`);
+  }
+}
+
+export class WorkItemOpenDescendantsError extends Error {
+  readonly code = "open_descendants";
+  override readonly name = "WorkItemOpenDescendantsError";
+
+  constructor(
+    readonly workItemId: string,
+    readonly descendantIds: readonly string[],
+  ) {
+    super(`Work item has open descendants: ${workItemId}`);
   }
 }
 
@@ -159,6 +194,21 @@ export type WorkItemTransition = Readonly<{
   expectedRevision: number;
   item: WorkItem;
 }>;
+
+export function createWorkItemTransition(
+  item: WorkItem,
+  eventType: WorkItemEventType,
+  payload: WorkItemEventPayload,
+  now: string,
+  changes: Partial<WorkItem> = {},
+): WorkItemTransition {
+  const revision = item.revision + 1;
+  return {
+    event: { createdAt: now, eventType, payload, revision },
+    expectedRevision: item.revision,
+    item: { ...item, ...changes, revision, updatedAt: now },
+  };
+}
 
 export type WorkItemChanges = Readonly<{
   assignee?: string | null | undefined;

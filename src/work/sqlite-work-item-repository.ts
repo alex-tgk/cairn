@@ -1,6 +1,7 @@
 import {
   type Kysely,
   type Selectable,
+  sql,
 } from "kysely";
 
 import {
@@ -11,9 +12,12 @@ import {
 } from "../storage/query-database.ts";
 import {
   restoreWorkItem,
+  createWorkItemTransition,
   WorkItemConflictError,
   WorkItemId,
+  WorkItemOpenDescendantsError,
   WorkItemPriority,
+  WorkItemRelationError,
   WorkItemTitle,
   type WorkItem,
   type WorkItemEvent,
@@ -21,10 +25,27 @@ import {
   type WorkItemEventPayload,
   type WorkItemTransition,
 } from "./work-item.ts";
-import type { WorkItemRepository } from "./work-item-repository.ts";
+import type {
+  WorkDependency,
+  WorkDependencyDirection,
+  WorkItemRepository,
+  WorkReadiness,
+  WorkTreeNode,
+} from "./work-item-repository.ts";
 
 type WorkItemRow = Selectable<WorkItemTable>;
 type WorkItemEventRow = Selectable<WorkItemEventTable>;
+type WorkTreeRow = WorkItemRow &
+  Readonly<{
+    depth: number;
+    parent_id: string | null;
+  }>;
+type WorkDependencyRow = WorkItemRow &
+  Readonly<{
+    blocked_id: string;
+    blocker_id: string;
+    dependency_created_at: string;
+  }>;
 
 function mapWorkItem(row: WorkItemRow): WorkItem {
   return restoreWorkItem({
@@ -87,20 +108,356 @@ const UUID_PREFIX_PATTERN = /^[0-9a-f-]+$/u;
 export class SqliteWorkItemRepository implements WorkItemRepository {
   constructor(private readonly database: CairnQueryDatabase) {}
 
-  async create(item: WorkItem): Promise<void> {
+  async create(item: WorkItem, parentId?: WorkItemId): Promise<void> {
     await this.database.immediateTransaction(async (database) => {
+      if (parentId) {
+        if (item.id.toString() === parentId.toString()) {
+          throw new WorkItemRelationError(
+            "self_parent",
+            item.id.toString(),
+            parentId.toString(),
+          );
+        }
+        await this.requireRelatedItem(database, item.projectId, parentId);
+      }
       await this.insertWorkItem(database, item);
-      await this.insertCreatedEvent(database, item);
+      await this.insertCreatedEvent(database, item, parentId);
       await this.insertSearchProjection(database, item);
+      if (parentId) {
+        await this.insertParent(database, item, parentId, item.createdAt);
+      }
     });
   }
 
   async applyTransition(transition: WorkItemTransition): Promise<void> {
     await this.database.immediateTransaction(async (database) => {
-      await this.updateWorkItem(database, transition);
-      await this.insertEvent(database, transition.item.id, transition.event);
-      await this.updateSearchProjection(database, transition.item);
+      await this.requireItemRevision(
+        database,
+        transition.item.projectId,
+        transition.item.id,
+        transition.expectedRevision,
+      );
+      if (transition.event.eventType === "closed") {
+        await this.requireNoOpenDescendants(database, transition.item);
+      }
+      await this.applyTransitionInTransaction(database, transition);
     });
+  }
+
+  async addBlocker(
+    projectId: string,
+    blockedId: WorkItemId,
+    blockerId: WorkItemId,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    return await this.database.immediateTransaction(async (database) => {
+      if (blockedId.toString() === blockerId.toString()) {
+        throw new WorkItemRelationError(
+          "self_dependency",
+          blockedId.toString(),
+          blockerId.toString(),
+        );
+      }
+      const blocked = await this.requireItemRevision(
+        database,
+        projectId,
+        blockedId,
+        expectedRevision,
+      );
+      await this.requireRelatedItem(database, projectId, blockerId);
+      const existing = await database
+        .selectFrom("work_item_dependencies")
+        .select("blocked_id")
+        .where("project_id", "=", projectId)
+        .where("blocked_id", "=", blockedId.toString())
+        .where("blocker_id", "=", blockerId.toString())
+        .executeTakeFirst();
+      if (existing) {
+        return blocked;
+      }
+      await this.requireNoDependencyCycle(
+        database,
+        projectId,
+        blockedId,
+        blockerId,
+      );
+      await database
+        .insertInto("work_item_dependencies")
+        .values({
+          blocked_id: blockedId.toString(),
+          blocker_id: blockerId.toString(),
+          created_at: now,
+          project_id: projectId,
+        })
+        .execute();
+      const transition = createWorkItemTransition(
+        blocked,
+        "dependency_added",
+        { blockerId: blockerId.toString() },
+        now,
+      );
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async removeBlocker(
+    projectId: string,
+    blockedId: WorkItemId,
+    blockerId: WorkItemId,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    return await this.database.immediateTransaction(async (database) => {
+      if (blockedId.toString() === blockerId.toString()) {
+        throw new WorkItemRelationError(
+          "self_dependency",
+          blockedId.toString(),
+          blockerId.toString(),
+        );
+      }
+      const blocked = await this.requireItemRevision(
+        database,
+        projectId,
+        blockedId,
+        expectedRevision,
+      );
+      await this.requireRelatedItem(database, projectId, blockerId);
+      const result = await database
+        .deleteFrom("work_item_dependencies")
+        .where("project_id", "=", projectId)
+        .where("blocked_id", "=", blockedId.toString())
+        .where("blocker_id", "=", blockerId.toString())
+        .executeTakeFirst();
+      if (result.numDeletedRows === 0n) {
+        return blocked;
+      }
+      const transition = createWorkItemTransition(
+        blocked,
+        "dependency_removed",
+        { blockerId: blockerId.toString() },
+        now,
+      );
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async listDependencies(
+    projectId: string,
+    id: WorkItemId,
+    direction: WorkDependencyDirection,
+  ): Promise<readonly WorkDependency[]> {
+    const relatedColumn = direction === "blockers" ? "blocker_id" : "blocked_id";
+    const matchColumn = direction === "blockers" ? "blocked_id" : "blocker_id";
+    const rows = await sql<WorkDependencyRow>`
+      SELECT related.*, dependency.blocked_id, dependency.blocker_id,
+             dependency.created_at AS dependency_created_at
+      FROM work_item_dependencies AS dependency
+      INNER JOIN work_items AS related
+        ON related.project_id = dependency.project_id
+       AND related.id = dependency.${sql.ref(relatedColumn)}
+      WHERE dependency.project_id = ${projectId}
+        AND dependency.${sql.ref(matchColumn)} = ${id.toString()}
+      ORDER BY related.priority ASC, related.created_at ASC, related.id ASC
+    `.execute(this.database.queries);
+    return rows.rows.map((row) => ({
+      blockedId: WorkItemId.from(row.blocked_id),
+      blockerId: WorkItemId.from(row.blocker_id),
+      createdAt: row.dependency_created_at,
+      relatedItem: mapWorkItem(row),
+    }));
+  }
+
+  async listReady(projectId: string): Promise<readonly WorkReadiness[]> {
+    const rows = await sql<WorkItemRow>`
+      SELECT item.*
+      FROM work_items AS item
+      WHERE item.project_id = ${projectId}
+        AND item.status = 'open'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM work_item_dependencies AS dependency
+          INNER JOIN work_items AS blocker
+            ON blocker.project_id = dependency.project_id
+           AND blocker.id = dependency.blocker_id
+          WHERE dependency.project_id = item.project_id
+            AND dependency.blocked_id = item.id
+            AND blocker.status <> 'closed'
+        )
+      ORDER BY item.priority ASC, item.created_at ASC, item.id ASC
+    `.execute(this.database.queries);
+    return rows.rows.map((row) => ({ blockers: [], item: mapWorkItem(row) }));
+  }
+
+  async listBlocked(projectId: string): Promise<readonly WorkReadiness[]> {
+    const rows = await sql<WorkItemRow>`
+      SELECT item.*
+      FROM work_items AS item
+      WHERE item.project_id = ${projectId}
+        AND item.status <> 'closed'
+        AND EXISTS (
+          SELECT 1
+          FROM work_item_dependencies AS dependency
+          INNER JOIN work_items AS blocker
+            ON blocker.project_id = dependency.project_id
+           AND blocker.id = dependency.blocker_id
+          WHERE dependency.project_id = item.project_id
+            AND dependency.blocked_id = item.id
+            AND blocker.status <> 'closed'
+        )
+      ORDER BY item.priority ASC, item.created_at ASC, item.id ASC
+    `.execute(this.database.queries);
+    return await Promise.all(
+      rows.rows.map(async (row) => ({
+        blockers: await this.listActiveBlockers(projectId, WorkItemId.from(row.id)),
+        item: mapWorkItem(row),
+      })),
+    );
+  }
+
+  async setParent(
+    projectId: string,
+    childId: WorkItemId,
+    parentId: WorkItemId,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    return await this.database.immediateTransaction(async (database) => {
+      if (childId.toString() === parentId.toString()) {
+        throw new WorkItemRelationError(
+          "self_parent",
+          childId.toString(),
+          parentId.toString(),
+        );
+      }
+      const child = await this.requireItemRevision(
+        database,
+        projectId,
+        childId,
+        expectedRevision,
+      );
+      await this.requireRelatedItem(database, projectId, parentId);
+      const currentParent = await this.currentParent(database, projectId, childId);
+      if (currentParent === parentId.toString()) {
+        return child;
+      }
+      await this.requireNoHierarchyCycle(database, projectId, childId, parentId);
+      await database
+        .insertInto("work_item_hierarchy")
+        .values({
+          child_id: childId.toString(),
+          created_at: now,
+          parent_id: parentId.toString(),
+          project_id: projectId,
+        })
+        .onConflict((conflict) =>
+          conflict.columns(["project_id", "child_id"]).doUpdateSet({
+            created_at: now,
+            parent_id: parentId.toString(),
+          }),
+        )
+        .execute();
+      const transition = createWorkItemTransition(
+        child,
+        "parent_set",
+        { parentId: parentId.toString() },
+        now,
+      );
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async clearParent(
+    projectId: string,
+    childId: WorkItemId,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    return await this.database.immediateTransaction(async (database) => {
+      const child = await this.requireItemRevision(
+        database,
+        projectId,
+        childId,
+        expectedRevision,
+      );
+      const currentParent = await this.currentParent(database, projectId, childId);
+      if (currentParent === null) {
+        return child;
+      }
+      await database
+        .deleteFrom("work_item_hierarchy")
+        .where("project_id", "=", projectId)
+        .where("child_id", "=", childId.toString())
+        .execute();
+      const transition = createWorkItemTransition(
+        child,
+        "parent_cleared",
+        { parentId: null },
+        now,
+      );
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async listTree(
+    projectId: string,
+    rootId?: WorkItemId,
+  ): Promise<readonly WorkTreeNode[]> {
+    const root = rootId?.toString() ?? null;
+    const rows = await sql<WorkTreeRow>`
+      WITH RECURSIVE tree(
+        id, project_id, title, description, status, priority, type, assignee,
+        created_at, updated_at, claimed_at, closed_at, revision, notes,
+        parent_id, depth, sort_path
+      ) AS (
+        SELECT item.id, item.project_id, item.title, item.description,
+               item.status, item.priority, item.type, item.assignee,
+               item.created_at, item.updated_at, item.claimed_at,
+               item.closed_at, item.revision, item.notes,
+               hierarchy.parent_id, 0,
+               printf('%d|%s|%s', item.priority, item.created_at, item.id)
+        FROM work_items AS item
+        LEFT JOIN work_item_hierarchy AS hierarchy
+          ON hierarchy.project_id = item.project_id
+         AND hierarchy.child_id = item.id
+        WHERE item.project_id = ${projectId}
+          AND (
+            (${root} IS NULL AND hierarchy.child_id IS NULL)
+            OR item.id = ${root}
+          )
+
+        UNION ALL
+
+        SELECT child.id, child.project_id, child.title, child.description,
+               child.status, child.priority, child.type, child.assignee,
+               child.created_at, child.updated_at, child.claimed_at,
+               child.closed_at, child.revision, child.notes,
+               hierarchy.parent_id, tree.depth + 1,
+               tree.sort_path || '/' ||
+                 printf('%d|%s|%s', child.priority, child.created_at, child.id)
+        FROM tree
+        INNER JOIN work_item_hierarchy AS hierarchy
+          ON hierarchy.project_id = ${projectId}
+         AND hierarchy.parent_id = tree.id
+        INNER JOIN work_items AS child
+          ON child.project_id = hierarchy.project_id
+         AND child.id = hierarchy.child_id
+      )
+      SELECT id, project_id, title, description, status, priority, type,
+             assignee, created_at, updated_at, claimed_at, closed_at,
+             revision, notes, parent_id, depth
+      FROM tree
+      ORDER BY sort_path ASC
+    `.execute(this.database.queries);
+    return rows.rows.map((row) => ({
+      depth: row.depth,
+      item: mapWorkItem(row),
+      parentId: row.parent_id === null ? null : WorkItemId.from(row.parent_id),
+    }));
   }
 
   async findById(projectId: string, id: WorkItemId): Promise<WorkItem | null> {
@@ -209,6 +566,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
   private async insertCreatedEvent(
     database: Kysely<CairnDatabaseSchema>,
     item: WorkItem,
+    parentId?: WorkItemId,
   ): Promise<void> {
     await this.insertEvent(database, item.id, {
       createdAt: item.createdAt,
@@ -217,6 +575,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
         priority: item.priority.toNumber(),
         status: item.status,
         type: item.type,
+        ...(parentId ? { parentId: parentId.toString() } : {}),
       },
       revision: item.revision,
     });
@@ -271,6 +630,222 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
       throw new WorkItemConflictError(
         item.id.toString(),
         transition.expectedRevision,
+      );
+    }
+  }
+
+  private async applyTransitionInTransaction(
+    database: Kysely<CairnDatabaseSchema>,
+    transition: WorkItemTransition,
+  ): Promise<void> {
+    await this.updateWorkItem(database, transition);
+    await this.insertEvent(database, transition.item.id, transition.event);
+    await this.updateSearchProjection(database, transition.item);
+  }
+
+  private async currentParent(
+    database: Kysely<CairnDatabaseSchema>,
+    projectId: string,
+    childId: WorkItemId,
+  ): Promise<string | null> {
+    const relation = await database
+      .selectFrom("work_item_hierarchy")
+      .select("parent_id")
+      .where("project_id", "=", projectId)
+      .where("child_id", "=", childId.toString())
+      .executeTakeFirst();
+    return relation?.parent_id ?? null;
+  }
+
+  private async insertParent(
+    database: Kysely<CairnDatabaseSchema>,
+    child: WorkItem,
+    parentId: WorkItemId,
+    now: string,
+  ): Promise<void> {
+    await database
+      .insertInto("work_item_hierarchy")
+      .values({
+        child_id: child.id.toString(),
+        created_at: now,
+        parent_id: parentId.toString(),
+        project_id: child.projectId,
+      })
+      .execute();
+  }
+
+  private async requireItemRevision(
+    database: Kysely<CairnDatabaseSchema>,
+    projectId: string,
+    id: WorkItemId,
+    expectedRevision: number,
+  ): Promise<WorkItem> {
+    const row = await database
+      .selectFrom("work_items")
+      .selectAll()
+      .where("project_id", "=", projectId)
+      .where("id", "=", id.toString())
+      .executeTakeFirst();
+    if (!row) {
+      throw new WorkItemRelationError(
+        "cross_project_relation",
+        id.toString(),
+        id.toString(),
+      );
+    }
+    const item = mapWorkItem(row);
+    if (item.revision !== expectedRevision) {
+      throw new WorkItemConflictError(
+        id.toString(),
+        expectedRevision,
+        item.revision,
+      );
+    }
+    return item;
+  }
+
+  private async requireRelatedItem(
+    database: Kysely<CairnDatabaseSchema>,
+    projectId: string,
+    id: WorkItemId,
+  ): Promise<void> {
+    const item = await database
+      .selectFrom("work_items")
+      .select("project_id")
+      .where("id", "=", id.toString())
+      .executeTakeFirst();
+    if (!item || item.project_id !== projectId) {
+      throw new WorkItemRelationError(
+        "cross_project_relation",
+        projectId,
+        id.toString(),
+      );
+    }
+  }
+
+  private async requireNoHierarchyCycle(
+    database: Kysely<CairnDatabaseSchema>,
+    projectId: string,
+    childId: WorkItemId,
+    parentId: WorkItemId,
+  ): Promise<void> {
+    const cycle = await sql<{ id: string }>`
+      WITH RECURSIVE ancestors(id) AS (
+        SELECT parent_id
+        FROM work_item_hierarchy
+        WHERE project_id = ${projectId}
+          AND child_id = ${parentId.toString()}
+
+        UNION ALL
+
+        SELECT hierarchy.parent_id
+        FROM work_item_hierarchy AS hierarchy
+        INNER JOIN ancestors ON ancestors.id = hierarchy.child_id
+        WHERE hierarchy.project_id = ${projectId}
+      )
+      SELECT id FROM ancestors WHERE id = ${childId.toString()} LIMIT 1
+    `.execute(database);
+    if (cycle.rows.length > 0) {
+      throw new WorkItemRelationError(
+        "hierarchy_cycle",
+        childId.toString(),
+        parentId.toString(),
+      );
+    }
+  }
+
+  private async requireNoDependencyCycle(
+    database: Kysely<CairnDatabaseSchema>,
+    projectId: string,
+    blockedId: WorkItemId,
+    blockerId: WorkItemId,
+  ): Promise<void> {
+    const cycle = await sql<{ id: string }>`
+      WITH RECURSIVE blockers(id) AS (
+        SELECT dependency.blocker_id
+        FROM work_item_dependencies AS dependency
+        WHERE dependency.project_id = ${projectId}
+          AND dependency.blocked_id = ${blockerId.toString()}
+
+        UNION
+
+        SELECT dependency.blocker_id
+        FROM work_item_dependencies AS dependency
+        INNER JOIN blockers ON blockers.id = dependency.blocked_id
+        WHERE dependency.project_id = ${projectId}
+      )
+      SELECT id FROM blockers WHERE id = ${blockedId.toString()} LIMIT 1
+    `.execute(database);
+    if (cycle.rows.length > 0) {
+      throw new WorkItemRelationError(
+        "dependency_cycle",
+        blockedId.toString(),
+        blockerId.toString(),
+      );
+    }
+  }
+
+  private async listActiveBlockers(
+    projectId: string,
+    blockedId: WorkItemId,
+  ): Promise<readonly WorkItem[]> {
+    const rows = await this.database.queries
+      .selectFrom("work_item_dependencies as dependency")
+      .innerJoin("work_items as blocker", (join) =>
+        join
+          .onRef("blocker.project_id", "=", "dependency.project_id")
+          .onRef("blocker.id", "=", "dependency.blocker_id"),
+      )
+      .selectAll("blocker")
+      .where("dependency.project_id", "=", projectId)
+      .where("dependency.blocked_id", "=", blockedId.toString())
+      .where("blocker.status", "!=", "closed")
+      .orderBy("blocker.priority", "asc")
+      .orderBy("blocker.created_at", "asc")
+      .orderBy("blocker.id", "asc")
+      .execute();
+    return rows.map(mapWorkItem);
+  }
+
+  private async requireNoOpenDescendants(
+    database: Kysely<CairnDatabaseSchema>,
+    item: WorkItem,
+  ): Promise<void> {
+    const descendants = await sql<{ id: string }>`
+      WITH RECURSIVE descendants(id, sort_path) AS (
+        SELECT child.id,
+               printf('%d|%s|%s', child.priority, child.created_at, child.id)
+        FROM work_item_hierarchy AS hierarchy
+        INNER JOIN work_items AS child
+          ON child.project_id = hierarchy.project_id
+         AND child.id = hierarchy.child_id
+        WHERE hierarchy.project_id = ${item.projectId}
+          AND hierarchy.parent_id = ${item.id.toString()}
+
+        UNION ALL
+
+        SELECT child.id,
+               descendants.sort_path || '/' ||
+                 printf('%d|%s|%s', child.priority, child.created_at, child.id)
+        FROM descendants
+        INNER JOIN work_item_hierarchy AS hierarchy
+          ON hierarchy.project_id = ${item.projectId}
+         AND hierarchy.parent_id = descendants.id
+        INNER JOIN work_items AS child
+          ON child.project_id = hierarchy.project_id
+         AND child.id = hierarchy.child_id
+      )
+      SELECT descendants.id
+      FROM descendants
+      INNER JOIN work_items AS item ON item.id = descendants.id
+      WHERE item.status <> 'closed'
+      ORDER BY descendants.sort_path ASC
+    `.execute(database);
+    const descendantIds = descendants.rows.map(({ id }) => id);
+    if (descendantIds.length > 0) {
+      throw new WorkItemOpenDescendantsError(
+        item.id.toString(),
+        descendantIds,
       );
     }
   }
