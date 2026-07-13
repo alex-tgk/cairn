@@ -46,6 +46,18 @@ type SaveMemoryOptions = MemoryContextOptions &
 
 type ShowMemoryOptions = MemoryContextOptions & Readonly<{ id: string }>;
 
+type RelateMemoryOptions = MemoryContextOptions &
+  Readonly<{ id: string; now?: (() => string) | undefined; relatedId: string }>;
+
+type TimelineMemoryOptions = MemoryContextOptions &
+  Readonly<{ after?: number | undefined; before?: number | undefined; id: string }>;
+
+export type MemoryTimelineView = Readonly<{
+  after: readonly MemoryView[];
+  before: readonly MemoryView[];
+  target: MemoryView;
+}>;
+
 type ListMemoryOptions = MemoryContextOptions &
   Readonly<{
     limit?: number | undefined;
@@ -175,21 +187,30 @@ export async function saveMemory(
   });
 }
 
+async function requireMemory(
+  repository: MemoryRepository,
+  projectId: string,
+  reference: string,
+): Promise<Memory> {
+  const matches = await repository.findByReference(projectId, reference);
+  const memory = matches[0];
+  if (!memory) {
+    throw new MemoryNotFoundError(reference);
+  }
+  if (matches.length > 1) {
+    throw new MemoryAmbiguousReferenceError(
+      reference,
+      matches.map((match) => match.id.toString()),
+    );
+  }
+  return memory;
+}
+
 export async function showMemory(
   options: ShowMemoryOptions,
 ): Promise<MemoryView> {
   return withMemoryRepository(options, async (repository, projectId) => {
-    const matches = await repository.findByReference(projectId, options.id);
-    const memory = matches[0];
-    if (!memory) {
-      throw new MemoryNotFoundError(options.id);
-    }
-    if (matches.length > 1) {
-      throw new MemoryAmbiguousReferenceError(
-        options.id,
-        matches.map((match) => match.id.toString()),
-      );
-    }
+    const memory = await requireMemory(repository, projectId, options.id);
     return toMemoryView(memory);
   });
 }
@@ -216,5 +237,54 @@ export async function searchMemories(
       toFilter(options),
     );
     return memories.map(toMemoryView);
+  });
+}
+
+export async function relateMemories(
+  options: RelateMemoryOptions,
+): Promise<void> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const now = (options.now ?? (() => new Date().toISOString()))();
+    const memory = await requireMemory(repository, projectId, options.id);
+    const related = await requireMemory(repository, projectId, options.relatedId);
+    await repository.addRelation(memory.id, related.id, now);
+  });
+}
+
+export async function unrelateMemories(
+  options: RelateMemoryOptions,
+): Promise<void> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const memory = await requireMemory(repository, projectId, options.id);
+    const related = await requireMemory(repository, projectId, options.relatedId);
+    await repository.removeRelation(memory.id, related.id);
+  });
+}
+
+export async function listMemoryRelations(
+  options: ShowMemoryOptions,
+): Promise<readonly MemoryView[]> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const memory = await requireMemory(repository, projectId, options.id);
+    const related = await repository.listRelations(memory.id);
+    return related.map(toMemoryView);
+  });
+}
+
+export async function getMemoryTimeline(
+  options: TimelineMemoryOptions,
+): Promise<MemoryTimelineView> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const memory = await requireMemory(repository, projectId, options.id);
+    const timeline = await repository.listTimeline(
+      memory,
+      options.before ?? 5,
+      options.after ?? 5,
+    );
+    return {
+      after: timeline.after.map(toMemoryView),
+      before: timeline.before.map(toMemoryView),
+      target: toMemoryView(timeline.target),
+    };
   });
 }

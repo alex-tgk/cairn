@@ -179,6 +179,12 @@ export type MemoryEventTable = Readonly<{
   revision: number;
 }>;
 
+export type MemoryRelationTable = Readonly<{
+  created_at: string;
+  memory_id: string;
+  related_memory_id: string;
+}>;
+
 export type SchemaMigrationTable = Readonly<{
   applied_at: string;
   name: string;
@@ -192,6 +198,7 @@ export interface CairnDatabaseSchema {
   context_sources: ContextSourceTable;
   memories: MemoryTable;
   memory_events: MemoryEventTable;
+  memory_relations: MemoryRelationTable;
   projects: ProjectTable;
   schema_migrations: SchemaMigrationTable;
   search_entries: SearchEntryTable;

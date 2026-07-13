@@ -13,6 +13,7 @@ import {
   upsertMemory,
   MemoryConflictError,
   MemoryId,
+  MemoryRelationError,
 } from "../src/memory/memory.ts";
 import { SqliteMemoryRepository } from "../src/memory/sqlite-memory-repository.ts";
 
@@ -287,6 +288,140 @@ describe("SQLite memory repository", () => {
     const results = await repository.search(PROJECT_ID, "refresh tokens");
     expect(results).toHaveLength(1);
     expect(results[0]?.title.toString()).toBe("Auth model");
+
+    await queryDatabase.close();
+  });
+
+  test("adds, lists from both sides, and removes a relation idempotently", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteMemoryRepository(queryDatabase);
+
+    const first = createMemory({
+      content: "First memory.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a30"),
+      now: "2026-07-13T12:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "First",
+      type: "discovery",
+    });
+    const second = createMemory({
+      content: "Second memory.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a31"),
+      now: "2026-07-13T12:01:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Second",
+      type: "discovery",
+    });
+    await repository.create(first);
+    await repository.create(second);
+
+    await repository.addRelation(first.id, second.id, "2026-07-13T12:02:00.000Z");
+    // Re-adding in reverse order should be idempotent, not error or duplicate.
+    await repository.addRelation(second.id, first.id, "2026-07-13T12:03:00.000Z");
+
+    const fromFirst = await repository.listRelations(first.id);
+    expect(fromFirst.map((memory) => memory.title.toString())).toEqual(["Second"]);
+
+    const fromSecond = await repository.listRelations(second.id);
+    expect(fromSecond.map((memory) => memory.title.toString())).toEqual(["First"]);
+
+    await repository.removeRelation(second.id, first.id);
+    expect(await repository.listRelations(first.id)).toHaveLength(0);
+    expect(await repository.listRelations(second.id)).toHaveLength(0);
+
+    await queryDatabase.close();
+  });
+
+  test("rejects relating a memory to itself", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteMemoryRepository(queryDatabase);
+
+    const memory = createMemory({
+      content: "Solo memory.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a32"),
+      now: "2026-07-13T12:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Solo",
+      type: "discovery",
+    });
+    await repository.create(memory);
+
+    await expect(
+      repository.addRelation(memory.id, memory.id, "2026-07-13T12:01:00.000Z"),
+    ).rejects.toBeInstanceOf(MemoryRelationError);
+
+    await queryDatabase.close();
+  });
+
+  test("builds a timeline scoped before/after the target within the same visibility boundary", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteMemoryRepository(queryDatabase);
+
+    const earlier = createMemory({
+      content: "Earlier.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a40"),
+      now: "2026-07-13T10:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Earlier",
+      type: "discovery",
+    });
+    const target = createMemory({
+      content: "Target.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a41"),
+      now: "2026-07-13T11:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Target",
+      type: "discovery",
+    });
+    const later = createMemory({
+      content: "Later.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a42"),
+      now: "2026-07-13T12:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Later",
+      type: "discovery",
+    });
+    const otherProjectMemory = createMemory({
+      content: "Should not appear.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a43"),
+      now: "2026-07-13T10:30:00.000Z",
+      projectId: OTHER_PROJECT_ID,
+      scope: "project",
+      title: "Other project",
+      type: "discovery",
+    });
+    const personalMemory = createMemory({
+      content: "Personal memory, out of scope for a project timeline.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a44"),
+      now: "2026-07-13T10:45:00.000Z",
+      projectId: null,
+      scope: "personal",
+      title: "Personal",
+      type: "preference",
+    });
+    await repository.create(earlier);
+    await repository.create(target);
+    await repository.create(later);
+    await repository.create(otherProjectMemory);
+    await repository.create(personalMemory);
+
+    const timeline = await repository.listTimeline(target, 5, 5);
+    expect(timeline.target.id.toString()).toBe(target.id.toString());
+    expect(timeline.before.map((memory) => memory.title.toString())).toEqual([
+      "Earlier",
+    ]);
+    expect(timeline.after.map((memory) => memory.title.toString())).toEqual([
+      "Later",
+    ]);
 
     await queryDatabase.close();
   });

@@ -39,6 +39,25 @@ export class MemoryConflictError extends Error {
   }
 }
 
+export class MemoryRelationError extends Error {
+  readonly code = "self_memory_relation";
+  override readonly name = "MemoryRelationError";
+
+  constructor(readonly memoryId: string) {
+    super(`A memory cannot relate to itself: ${memoryId}`);
+  }
+}
+
+export function normalizeMemoryRelation(
+  firstId: string,
+  secondId: string,
+): readonly [string, string] {
+  if (firstId === secondId) {
+    throw new MemoryRelationError(firstId);
+  }
+  return firstId < secondId ? [firstId, secondId] : [secondId, firstId];
+}
+
 export class MemoryId {
   private constructor(private readonly value: string) {}
 

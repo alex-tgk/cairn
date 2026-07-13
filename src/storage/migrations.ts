@@ -382,4 +382,20 @@ export const MIGRATIONS: readonly Migration[] = [
         ON memory_events(memory_id, created_at, id);
     `,
   },
+  {
+    name: "add memory relations",
+    version: 6,
+    sql: `
+      CREATE TABLE memory_relations (
+        memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+        related_memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(memory_id, related_memory_id),
+        CHECK(memory_id < related_memory_id)
+      ) STRICT;
+
+      CREATE INDEX memory_relations_related_index
+        ON memory_relations(related_memory_id, memory_id);
+    `,
+  },
 ];

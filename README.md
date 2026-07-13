@@ -57,6 +57,10 @@ bun run build
 ./dist/cairn memory show <memory-id>
 ./dist/cairn memory list --type architecture --scope project
 ./dist/cairn memory search "refresh tokens"
+./dist/cairn memory relate <memory-id> <related-memory-id>
+./dist/cairn memory relations <memory-id>
+./dist/cairn memory unrelate <memory-id> <related-memory-id>
+./dist/cairn memory timeline <memory-id> --before 5 --after 5
 ./dist/cairn doctor
 ```
 
@@ -89,7 +93,8 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | Comments, labels, and notes | Implemented |
 | List, ready, and blocked filtering | Implemented |
 | Durable memory capture, topics, scopes, list, and search | Implemented |
-| Memory relations, timeline context, and session summaries | Planned |
+| Memory relations and timeline context | Implemented |
+| Pin/archive state and session summaries | Planned |
 | Local context domain, discovery, and incremental indexing | Implemented (not yet wired to the CLI) |
 | Unified cross-domain search | Planned |
 | Beads and Engram migration | Planned |
