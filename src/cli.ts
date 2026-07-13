@@ -56,8 +56,7 @@ import {
   MemoryValidationError,
   parseMemoryScope,
   parseMemoryType,
-} from "./memory/memory.ts";
-import {
+} from "./memory/memory.ts";import {
   listMemories,
   saveMemory,
   searchMemories,
@@ -75,6 +74,12 @@ import {
   MemoryAmbiguousReferenceError,
   MemoryNotFoundError,
 } from "./memory/memory-service.ts";
+import {
+  ContextScopeValidationError,
+  getContextStatus,
+  runContextIndex,
+} from "./context/context-workspace-service.ts";
+import type { ContextIndexSummary, ContextIndexStatusSummary } from "./context/context-service.ts";
 
 const HELP = `Cairn ${packageJson.version}
 
@@ -138,6 +143,9 @@ Usage:
   cairn memory sessions [--scope <project|personal>] [--limit <n>]
                         [--path <path>] [--json]
   cairn memory context [--limit <n>] [--path <path>] [--json]
+  cairn context refresh [--all] [--path <path>] [--json]
+  cairn context rebuild [--all] [--path <path>] [--json]
+  cairn context status [--all] [--path <path>] [--json]
   cairn --version
   cairn --help
 `;
@@ -767,6 +775,96 @@ function printContextPrimer(
   }
 }
 
+function printContextIndexSummaries(
+  summaries: readonly ContextIndexSummary[],
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(summaries, null, 2));
+    return;
+  }
+  if (summaries.length === 0) {
+    console.log("No registered projects to index.");
+    return;
+  }
+  for (const summary of summaries) {
+    console.log(
+      `${summary.workspacePath} [${summary.projectId}]: ${summary.status} (${summary.mode})`,
+    );
+    console.log(
+      `  added=${summary.counts.added} updated=${summary.counts.updated} removed=${summary.counts.removed} unchanged=${summary.counts.unchanged} skipped=${summary.counts.skipped} errors=${summary.counts.errors}`,
+    );
+    for (const error of summary.errors) {
+      console.log(`  error: ${error}`);
+    }
+  }
+}
+
+function printContextStatusSummaries(
+  statuses: readonly ContextIndexStatusSummary[],
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(statuses, null, 2));
+    return;
+  }
+  if (statuses.length === 0) {
+    console.log("No registered projects to report.");
+    return;
+  }
+  for (const status of statuses) {
+    console.log(
+      `${status.workspacePath} [${status.projectId}]: ${status.state}`,
+    );
+    if (status.sources.length === 0) {
+      console.log("  (no sources configured)");
+      continue;
+    }
+    for (const source of status.sources) {
+      console.log(
+        `  ${source.name}: ${source.state} (${source.activeDocumentCount}/${source.totalDocumentCount} documents, ${source.versionCount} versions)`,
+      );
+    }
+  }
+}
+
+async function runContextCommand(
+  arguments_: readonly string[],
+  json: boolean,
+): Promise<number> {
+  const [action] = arguments_;
+  const explicitPath = optionValue(arguments_, "--path");
+  const options = {
+    all: hasFlag(arguments_, "--all"),
+    explicitPath: explicitPath !== undefined,
+    path: explicitPath ?? process.cwd(),
+  };
+
+  try {
+    if (action === "refresh" || action === "rebuild") {
+      printContextIndexSummaries(
+        await runContextIndex(action, options),
+        json,
+      );
+      return 0;
+    }
+
+    if (action === "status") {
+      printContextStatusSummaries(await getContextStatus(options), json);
+      return 0;
+    }
+  } catch (error) {
+    if (error instanceof ContextScopeValidationError) {
+      printCliError(error, json);
+      return 2;
+    }
+    throw error;
+  }
+
+  console.error(`Unknown Cairn context command: ${action ?? ""}`);
+  return 2;
+}
+
 async function runMemoryCommand(
   arguments_: readonly string[],
   json: boolean,
@@ -964,6 +1062,10 @@ export async function runCli(arguments_: readonly string[]): Promise<number> {
     return await runMemoryCommand(commandArguments, json);
   }
 
+  if (command === "context") {
+    return await runContextCommand(commandArguments, json);
+  }
+
   console.error(`Unknown Cairn command: ${command ?? ""}`);
   console.error(HELP);
   return 2;
@@ -1081,6 +1183,9 @@ function describeCliError(error: unknown): CliError {
   }
   if (error instanceof ProjectNotFoundError) {
     return { code: "project_not_found", details: {}, message: error.message };
+  }
+  if (error instanceof ContextScopeValidationError) {
+    return { code: error.code, details: {}, message: error.message };
   }
   return {
     code: "command_failed",

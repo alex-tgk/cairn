@@ -160,6 +160,74 @@ export function getProjectWorkspaceCount(
   );
 }
 
+export function getWorkspaceId(
+  database: Database,
+  workspacePath: string,
+): string | null {
+  return (
+    database
+      .query<{ id: string }, [string]>(
+        "SELECT id FROM workspaces WHERE path = ?",
+      )
+      .get(workspacePath)?.id ?? null
+  );
+}
+
+export type RegisteredProjectWorkspace = Readonly<{
+  name: string;
+  projectId: string;
+  workspaceId: string;
+  workspacePath: string;
+}>;
+
+type RegisteredWorkspaceRow = Readonly<{
+  last_seen_at: string;
+  name: string;
+  project_id: string;
+  workspace_id: string;
+  workspace_path: string;
+}>;
+
+export function listRegisteredProjectWorkspaces(
+  database: Database,
+): readonly RegisteredProjectWorkspace[] {
+  const rows = database
+    .query<RegisteredWorkspaceRow, []>(
+      `SELECT p.id AS project_id, p.name AS name,
+              w.id AS workspace_id, w.path AS workspace_path,
+              w.last_seen_at AS last_seen_at
+       FROM projects p
+       JOIN workspaces w ON w.project_id = p.id`,
+    )
+    .all();
+
+  const latestByProject = new Map<string, RegisteredWorkspaceRow>();
+  for (const row of rows) {
+    const current = latestByProject.get(row.project_id);
+    if (
+      current === undefined ||
+      row.last_seen_at > current.last_seen_at ||
+      (row.last_seen_at === current.last_seen_at &&
+        row.workspace_id < current.workspace_id)
+    ) {
+      latestByProject.set(row.project_id, row);
+    }
+  }
+
+  return [...latestByProject.values()]
+    .map((row) => ({
+      name: row.name,
+      projectId: row.project_id,
+      workspaceId: row.workspace_id,
+      workspacePath: row.workspace_path,
+    }))
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name) ||
+        (left.projectId < right.projectId ? -1 : 1),
+    );
+}
+
 export function checkDatabaseHealth(database: Database): DatabaseHealth {
   const foreignKeys =
     database

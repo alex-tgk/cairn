@@ -67,6 +67,10 @@ bun run build
 ./dist/cairn memory unarchive <memory-id>
 ./dist/cairn memory sessions --limit 5
 ./dist/cairn memory context
+./dist/cairn context refresh
+./dist/cairn context rebuild
+./dist/cairn context status
+./dist/cairn context status --all
 ./dist/cairn doctor
 ```
 
