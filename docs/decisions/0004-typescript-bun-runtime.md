@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted July 11, 2026, contingent on cross-platform release validation.
+Accepted July 11, 2026, contingent on cross-platform release validation. The database-access clause was amended by [ADR 0007](0007-kysely-database-adapters.md).
 
 ## Context
 
@@ -13,7 +13,7 @@ Cairn needs a typed multi-domain model, embedded SQLite and FTS5, fast CLI start
 - Use strict TypeScript for domain, application, CLI, and infrastructure code.
 - Use Bun for execution, `bun:sqlite`, testing, and standalone compilation.
 - Keep domain and application modules independent from Bun and SQLite imports.
-- Use direct parameterized SQL behind domain-owned adapters instead of introducing an ORM before it is needed.
+- Start with direct parameterized SQL behind domain-owned adapters. ADR 0007 later introduces Kysely inside those adapters as the schema grows.
 - Reconsider Go only if Bun fails release compatibility, signing, size, or stability requirements.
 
 ## Consequences

@@ -63,3 +63,4 @@ Continue essential work tracking:
 - Repository documentation is the cross-LLM source of truth.
 - Work hierarchy allows arbitrary depth with one parent per item; hierarchy is separate from blocking dependencies.
 - Hierarchy mutations reject self-parenting, cross-project links, and cycles; parents cannot close while descendants remain open.
+- Kysely is the accepted typed SQL layer inside infrastructure adapters; repository ports and `bun:sqlite` remain the architectural and physical boundaries.

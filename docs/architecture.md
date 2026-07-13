@@ -58,6 +58,8 @@ The current schema establishes:
 
 Planned migrations add separate work, memory, context-source, audit, and import tables.
 
+Database access uses Kysely inside infrastructure adapters while domain and application code depend on repository ports. `bun:sqlite` remains the driver, embedded ordered migrations remain the runtime source of truth, and advanced SQLite operations may use explicit parameterized SQL. See [ADR 0007](decisions/0007-kysely-database-adapters.md).
+
 ## Domain boundaries
 
 | Domain | Owns |

@@ -28,6 +28,7 @@ Use `CAIRN_DATA_DIR` for isolated development and test runs. Never commit SQLite
 - Treat unified search as a read projection, not a generic writable model.
 - Keep domain and application code independent from Bun and `bun:sqlite`.
 - Use parameterized SQL behind domain-owned storage adapters.
+- Use Kysely only inside infrastructure adapters. Do not expose Kysely types across domain or application ports; retain explicit SQL for advanced SQLite behavior when clearer.
 - Identify projects by the UUID in `.cairn/project.toml`; absolute paths belong only to workspace records.
 - Core behavior must remain deterministic and require no embedding or inference model.
 - Add schema changes through ordered migrations with integration tests.
