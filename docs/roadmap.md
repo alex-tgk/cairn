@@ -9,7 +9,7 @@ The roadmap is ordered by dependency and risk reduction rather than dates.
 | 0. Product and architecture | Scope and durable decisions | Complete |
 | 1. Project and SQLite foundation | Rename-safe identity and executable CLI | Implemented locally |
 | 2. Work tracking | Essential Beads workflows | Implemented locally |
-| 3. Durable memory | Essential Engram workflows | Planned |
+| 3. Durable memory | Essential Engram workflows | In progress |
 | 4. Context and unified search | Essential `agents-context` workflows | Planned |
 | 5. Migration and operations | Safe cutover, backup, and recovery | Planned |
 | 6. Distribution | Signed releases and Homebrew tap | Planned |
@@ -55,6 +55,20 @@ Current progress:
 ## Slice 3: durable memory
 
 Implement memory types, scopes, topics, sessions, relations, search, timeline context, provenance, and session summaries. Exit when one process saves a memory and a later process recovers it deterministically.
+
+Current progress:
+
+- [x] Migration 5 memory and memory-event schema with project/personal scope
+      and a closed type set
+- [x] `memory save` with topic-key upsert, `memory show`, `memory list`, and
+      `memory search` against the shared FTS5 projection
+- [ ] Memory relations and cross-memory linking
+- [ ] Timeline context around a saved memory
+- [ ] Pin/archive state
+- [ ] Session-summary-specific listing and the `context` primer command
+
+See [ADR 0010](decisions/0010-essential-engram-cutover-contract.md) for the
+essential Engram cutover contract and its explicit deferrals.
 
 ## Slice 4: context and unified search
 

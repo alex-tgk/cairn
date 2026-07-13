@@ -80,7 +80,7 @@ describe("Cairn CLI", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 4,
+      schemaVersion: 5,
     });
   });
 
@@ -807,6 +807,105 @@ describe("Cairn CLI", () => {
         ).stdout,
       ),
     ).toHaveLength(1);
+  });
+
+  test("saves, upserts by topic, lists, and searches memories", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const saved = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Auth model",
+          "The auth model uses refresh tokens.",
+          "--type",
+          "architecture",
+          "--topic",
+          "architecture/auth-model",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string; revision: number };
+    expect(saved.revision).toBe(1);
+
+    const upserted = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Auth model v2",
+          "The auth model now rotates refresh tokens.",
+          "--type",
+          "architecture",
+          "--topic",
+          "architecture/auth-model",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string; revision: number; title: string };
+    expect(upserted.id).toBe(saved.id);
+    expect(upserted.revision).toBe(2);
+    expect(upserted.title).toBe("Auth model v2");
+
+    runCli(
+      [
+        "memory",
+        "save",
+        "Prefers concise commits",
+        "The user wants short, regular commits.",
+        "--type",
+        "preference",
+        "--scope",
+        "personal",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+
+    const shown = JSON.parse(
+      runCli(["memory", "show", saved.id, "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as { title: string };
+    expect(shown.title).toBe("Auth model v2");
+
+    const listed = JSON.parse(
+      runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as readonly { title: string }[];
+    expect(listed.map((memory) => memory.title)).toContain("Auth model v2");
+    expect(listed.map((memory) => memory.title)).toContain(
+      "Prefers concise commits",
+    );
+
+    const filtered = JSON.parse(
+      runCli(
+        ["memory", "list", "--scope", "personal", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as readonly { title: string }[];
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]?.title).toBe("Prefers concise commits");
+
+    const searched = JSON.parse(
+      runCli(
+        ["memory", "search", "refresh tokens", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as readonly { title: string }[];
+    expect(searched).toHaveLength(1);
+    expect(searched[0]?.title).toBe("Auth model v2");
   });
 
   test("returns a non-zero result outside a Cairn project", () => {

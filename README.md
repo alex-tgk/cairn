@@ -51,6 +51,12 @@ bun run build
 ./dist/cairn work note append <work-item-id> "Root cause identified"
 ./dist/cairn work comment add <work-item-id> <author> "Looks good to me"
 ./dist/cairn work comment list <work-item-id>
+./dist/cairn memory save "Auth model" "Uses refresh tokens." --type architecture --topic architecture/auth-model
+./dist/cairn memory save "Auth model v2" "Now rotates refresh tokens." --type architecture --topic architecture/auth-model
+./dist/cairn memory save "Prefers concise commits" "Regular reviewable commits." --type preference --scope personal
+./dist/cairn memory show <memory-id>
+./dist/cairn memory list --type architecture --scope project
+./dist/cairn memory search "refresh tokens"
 ./dist/cairn doctor
 ```
 
@@ -82,8 +88,10 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | Blocking dependencies and ready/blocked explanations | Implemented |
 | Comments, labels, and notes | Implemented |
 | List, ready, and blocked filtering | Implemented |
-| Durable memory | Planned |
-| Local context indexing and unified search | Planned |
+| Durable memory capture, topics, scopes, list, and search | Implemented |
+| Memory relations, timeline context, and session summaries | Planned |
+| Local context domain, discovery, and incremental indexing | Implemented (not yet wired to the CLI) |
+| Unified cross-domain search | Planned |
 | Beads and Engram migration | Planned |
 
 ## Documentation

@@ -11,7 +11,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 74 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 94 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -52,23 +52,39 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   order-preserving comments sharing the work item's revision sequence
 - List, ready, and blocked filtering by status, priority, type, assignee or
   unassigned work, labels (AND semantics), parent or roots, and result limit
+- Migration 4 context-source and document-version storage with incremental
+  hashing, active/removed tracking, and an index-run audit trail (domain,
+  service, and repository only; no CLI surface yet)
+- Migration 5 memory and memory-event storage with project and personal
+  scopes, a closed type set, and topic-addressable upsert
+- `memory save`, `memory show`, `memory list`, and `memory search` with
+  scope/type/topic filtering and deterministic FTS5 ranking
+- Topic-key upsert: saving with an existing `(scope, project)` topic updates
+  that memory in place, preserves its id, and increments its revision instead
+  of creating a duplicate
 
 ## Not implemented
 
-- Durable memory, sessions, topics, relations, or timelines
-- Context source discovery, incremental indexing, or user-facing search
+- Memory relations, timeline context around a saved memory, pin/archive
+  state, and the `context` primer command
+- Context source discovery and indexing CLI commands and user-facing search
 - Beads and Engram import
 - Backup and restore commands
 - Prebuilt release executables, Homebrew bottles, and macOS signing/notarization
 
 ## Next work slice
 
-Slice 2 (essential work tracking) is complete. Begin Slice 3, durable memory:
+Slice 3 (durable memory) has its essential capture, topic-upsert, list, and
+search contract implemented per ADR 0010. Continue Slice 3 with the deferred
+relation, timeline, and session-summary work, or begin wiring the existing
+context-indexing domain (migration 4) to CLI commands as part of Slice 4:
 
-1. Memory types, scopes, topics, sessions, relations, search, timeline
-   context, provenance, and session summaries
-2. Stable human and JSON CLI contracts
-3. Tests, documentation, and migration implications in the same work units
+1. Memory relations, timeline context, pin/archive state, and session-summary
+   listing
+2. Context source configuration, refresh/rebuild CLI commands, and
+   user-facing search
+3. Stable human and JSON CLI contracts
+4. Tests, documentation, and migration implications in the same work units
 
 ## Durable decisions
 
