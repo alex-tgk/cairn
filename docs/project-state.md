@@ -61,3 +61,5 @@ Continue essential work tracking:
 - Distribution uses standalone executables and `alex-tgk/homebrew-tap` first.
 - Verified work is committed and pushed regularly.
 - Repository documentation is the cross-LLM source of truth.
+- Work hierarchy allows arbitrary depth with one parent per item; hierarchy is separate from blocking dependencies.
+- Hierarchy mutations reject self-parenting, cross-project links, and cycles; parents cannot close while descendants remain open.

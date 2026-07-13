@@ -71,6 +71,8 @@ Planned migrations add separate work, memory, context-source, audit, and import 
 
 Do not introduce a generic writable `items` table. Unified search is a projection, not the source model.
 
+Work hierarchy is an arbitrary-depth project forest: each work item has at most one parent, any work type may appear at any level, and cycles or cross-project parenting are invalid. Hierarchy describes decomposition; explicit many-to-many blocking dependencies determine readiness. See [ADR 0006](decisions/0006-arbitrary-depth-work-hierarchy.md).
+
 ## Current executable slice
 
 The first slice implements:

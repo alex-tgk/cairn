@@ -31,6 +31,7 @@ Use `CAIRN_DATA_DIR` for isolated development and test runs. Never commit SQLite
 - Identify projects by the UUID in `.cairn/project.toml`; absolute paths belong only to workspace records.
 - Core behavior must remain deterministic and require no embedding or inference model.
 - Add schema changes through ordered migrations with integration tests.
+- Model work hierarchy as an arbitrary-depth, single-parent project forest. Keep structural hierarchy separate from many-to-many blocking dependencies and enforce ADR 0006 cycle and closure rules.
 
 ## Engineering workflow
 

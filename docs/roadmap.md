@@ -46,7 +46,7 @@ Current progress:
 - [x] Creation audit event and unified-search projection
 - [x] Claim, close, and reopen with audit history
 - [x] Work-item metadata updates with audit history
-- [ ] Parent/child and blocking dependencies
+- [ ] Arbitrary-depth single-parent hierarchy and separate blocking dependencies
 - [ ] Ready and blocked explanations
 - [ ] Labels, comments, and notes
 

@@ -21,6 +21,7 @@ Start with the product boundary, then follow the architecture and roadmap into i
 | [0003](decisions/0003-sqlite-project-workspace-storage.md) | Accepted | SQLite is the source of truth with stable project/workspace identity. |
 | [0004](decisions/0004-typescript-bun-runtime.md) | Accepted | Build the CLI in strict TypeScript on Bun. |
 | [0005](decisions/0005-standalone-binaries-homebrew-tap.md) | Accepted | Ship standalone binaries and use a custom Homebrew tap first. |
+| [0006](decisions/0006-arbitrary-depth-work-hierarchy.md) | Accepted | Use arbitrary-depth, single-parent work hierarchy separate from blocking dependencies. |
 
 ## Status language
 
