@@ -5,6 +5,7 @@ import {
   sql,
 } from "kysely";
 
+import type { MemoryEventType, MemoryScope, MemoryType } from "../memory/memory.ts";
 import type {
   WorkItemEventType,
   WorkItemStatus,
@@ -156,6 +157,28 @@ export type ContextIndexRunTable = Readonly<{
   workspace_id: string;
 }>;
 
+export type MemoryTable = Readonly<{
+  content: string;
+  created_at: string;
+  id: string;
+  project_id: string | null;
+  revision: number;
+  scope: MemoryScope;
+  title: string;
+  topic: string | null;
+  type: MemoryType;
+  updated_at: string;
+}>;
+
+export type MemoryEventTable = Readonly<{
+  created_at: string;
+  event_type: MemoryEventType;
+  id: Generated<number>;
+  memory_id: string;
+  payload_json: string;
+  revision: number;
+}>;
+
 export type SchemaMigrationTable = Readonly<{
   applied_at: string;
   name: string;
@@ -167,6 +190,8 @@ export interface CairnDatabaseSchema {
   context_documents: ContextDocumentTable;
   context_index_runs: ContextIndexRunTable;
   context_sources: ContextSourceTable;
+  memories: MemoryTable;
+  memory_events: MemoryEventTable;
   projects: ProjectTable;
   schema_migrations: SchemaMigrationTable;
   search_entries: SearchEntryTable;

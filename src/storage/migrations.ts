@@ -337,4 +337,49 @@ export const MIGRATIONS: readonly Migration[] = [
       INSERT INTO search_entries_fts(search_entries_fts) VALUES ('rebuild');
     `,
   },
+  {
+    name: "add durable memory storage",
+    version: 5,
+    sql: `
+      CREATE TABLE memories (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL CHECK(scope IN ('project', 'personal')),
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        type TEXT NOT NULL CHECK(type IN (
+          'decision', 'architecture', 'discovery', 'pattern',
+          'bugfix', 'config', 'preference', 'session_summary'
+        )),
+        topic TEXT,
+        title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+        content TEXT NOT NULL CHECK(length(trim(content)) > 0),
+        revision INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK(
+          (scope = 'project' AND project_id IS NOT NULL)
+          OR (scope = 'personal' AND project_id IS NULL)
+        )
+      ) STRICT;
+
+      CREATE UNIQUE INDEX memories_topic_scope_index
+        ON memories(scope, COALESCE(project_id, ''), topic)
+        WHERE topic IS NOT NULL;
+
+      CREATE INDEX memories_scope_project_order_index
+        ON memories(scope, project_id, type, created_at, id);
+
+      CREATE TABLE memory_events (
+        id INTEGER PRIMARY KEY,
+        memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        revision INTEGER NOT NULL CHECK(revision >= 1),
+        created_at TEXT NOT NULL,
+        UNIQUE(memory_id, revision)
+      ) STRICT;
+
+      CREATE INDEX memory_events_memory_order_index
+        ON memory_events(memory_id, created_at, id);
+    `,
+  },
 ];

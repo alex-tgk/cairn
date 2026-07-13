@@ -25,6 +25,7 @@ Start with the product boundary, then follow the architecture and roadmap into i
 | [0007](decisions/0007-kysely-database-adapters.md) | Accepted | Use Kysely as typed SQL inside infrastructure adapters while retaining `bun:sqlite`. |
 | [0008](decisions/0008-essential-beads-cutover-contract.md) | Accepted | Complete the Beads cutover with revisions, atomic claims, explainable readiness, and essential collaboration. |
 | [0009](decisions/0009-essential-agents-context-cutover-contract.md) | Accepted | Replace agents-context with safe project-scoped incremental indexing, deterministic search, and a local-only primer. |
+| [0010](decisions/0010-essential-engram-cutover-contract.md) | Accepted | Complete the Engram cutover with scoped, topic-addressable memories, topic-key upsert, and audited revisions. |
 
 ## Status language
 

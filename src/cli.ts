@@ -50,6 +50,20 @@ import {
   WorkItemAmbiguousReferenceError,
   WorkItemNotFoundError,
 } from "./work/work-service.ts";
+import {
+  MemoryConflictError,
+  MemoryValidationError,
+  parseMemoryScope,
+  parseMemoryType,
+} from "./memory/memory.ts";
+import {
+  listMemories,
+  saveMemory,
+  searchMemories,
+  showMemory,
+  MemoryAmbiguousReferenceError,
+  MemoryNotFoundError,
+} from "./memory/memory-service.ts";
 
 const HELP = `Cairn ${packageJson.version}
 
@@ -93,6 +107,13 @@ Usage:
                     [--parent <id> | --clear-parent]
                     [--if-revision <n>]
                     [--path <path>] [--json]
+  cairn memory save <title> <content> --type <type> [--scope <project|personal>]
+                     [--topic <key>] [--path <path>] [--json]
+  cairn memory show <id> [--path <path>] [--json]
+  cairn memory list [--type <type>] [--scope <project|personal>]
+                     [--topic <key>] [--limit <n>] [--path <path>] [--json]
+  cairn memory search <query> [--type <type>] [--scope <project|personal>]
+                       [--topic <key>] [--limit <n>] [--path <path>] [--json]
   cairn --version
   cairn --help
 `;
@@ -633,6 +654,101 @@ async function runWorkCommand(
   throw new Error(`Unknown Cairn work command: ${action ?? ""}`);
 }
 
+function memoryListFilter(arguments_: readonly string[]) {
+  const typeValue = optionValue(arguments_, "--type");
+  const scopeValue = optionValue(arguments_, "--scope");
+  const topic = optionValue(arguments_, "--topic");
+  const limitValue = optionValue(arguments_, "--limit");
+  let limit: number | undefined;
+  if (limitValue !== undefined) {
+    limit = Number(limitValue);
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new MemoryValidationError("Result limit must be a positive integer");
+    }
+  }
+  return {
+    limit,
+    scope: scopeValue === undefined ? undefined : parseMemoryScope(scopeValue),
+    topic,
+    type: typeValue === undefined ? undefined : parseMemoryType(typeValue),
+  };
+}
+
+function printMemoryList(
+  memories: Awaited<ReturnType<typeof listMemories>>,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(memories, null, 2));
+    return;
+  }
+  if (memories.length === 0) {
+    console.log("No memories.");
+    return;
+  }
+  for (const memory of memories) {
+    const topic = memory.topic === null ? "" : ` #${memory.topic}`;
+    console.log(
+      `${memory.shortId}: ${memory.title} [${memory.type}, ${memory.scope}]${topic}`,
+    );
+  }
+}
+
+async function runMemoryCommand(
+  arguments_: readonly string[],
+  json: boolean,
+): Promise<number> {
+  const [action, primary, secondary] = arguments_;
+  const path = optionValue(arguments_, "--path") ?? process.cwd();
+
+  if (action === "save") {
+    const typeValue = optionValue(arguments_, "--type");
+    if (typeValue === undefined) {
+      throw new MemoryValidationError("Memory type is required");
+    }
+    const scopeValue = optionValue(arguments_, "--scope");
+    printResult(
+      await saveMemory({
+        content: secondary ?? "",
+        path,
+        scope: scopeValue === undefined ? undefined : parseMemoryScope(scopeValue),
+        title: primary ?? "",
+        topic: optionValue(arguments_, "--topic"),
+        type: parseMemoryType(typeValue),
+      }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "show") {
+    printResult(await showMemory({ id: primary ?? "", path }), json);
+    return 0;
+  }
+
+  if (action === "list") {
+    printMemoryList(
+      await listMemories({ path, ...memoryListFilter(arguments_) }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "search") {
+    printMemoryList(
+      await searchMemories({
+        path,
+        query: primary ?? "",
+        ...memoryListFilter(arguments_),
+      }),
+      json,
+    );
+    return 0;
+  }
+
+  throw new Error(`Unknown Cairn memory command: ${action ?? ""}`);
+}
+
 export async function runCli(arguments_: readonly string[]): Promise<number> {
   if (arguments_.length === 0 || hasFlag(arguments_, "--help") || hasFlag(arguments_, "-h")) {
     console.log(HELP);
@@ -679,6 +795,10 @@ export async function runCli(arguments_: readonly string[]): Promise<number> {
 
   if (command === "work") {
     return await runWorkCommand(commandArguments, json);
+  }
+
+  if (command === "memory") {
+    return await runMemoryCommand(commandArguments, json);
   }
 
   console.error(`Unknown Cairn command: ${command ?? ""}`);
@@ -757,6 +877,37 @@ function describeCliError(error: unknown): CliError {
   }
   if (error instanceof WorkItemTransitionError) {
     return { code: "invalid_transition", details: {}, message: error.message };
+  }
+  if (error instanceof MemoryAmbiguousReferenceError) {
+    return {
+      code: error.code,
+      details: {
+        candidates: error.candidateIds,
+        reference: error.reference,
+      },
+      message: error.message,
+    };
+  }
+  if (error instanceof MemoryNotFoundError) {
+    return {
+      code: error.code,
+      details: { reference: error.reference },
+      message: error.message,
+    };
+  }
+  if (error instanceof MemoryConflictError) {
+    return {
+      code: error.code,
+      details: {
+        actualRevision: error.actualRevision,
+        expectedRevision: error.expectedRevision,
+        id: error.memoryId,
+      },
+      message: error.message,
+    };
+  }
+  if (error instanceof MemoryValidationError) {
+    return { code: "invalid_memory", details: {}, message: error.message };
   }
   if (error instanceof ProjectNotFoundError) {
     return { code: "project_not_found", details: {}, message: error.message };
