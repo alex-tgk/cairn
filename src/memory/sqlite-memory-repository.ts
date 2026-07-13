@@ -14,13 +14,18 @@ import {
   MemoryConflictError,
   MemoryId,
   MemoryTitle,
+  normalizeMemoryRelation,
   restoreMemory,
   type Memory,
   type MemoryEventDraft,
   type MemoryScope,
   type MemoryTransition,
 } from "./memory.ts";
-import type { MemoryFilter, MemoryRepository } from "./memory-repository.ts";
+import type {
+  MemoryFilter,
+  MemoryRepository,
+  MemoryTimeline,
+} from "./memory-repository.ts";
 
 type MemoryRow = Selectable<MemoryTable>;
 
@@ -168,6 +173,89 @@ export class SqliteMemoryRepository implements MemoryRepository {
       ${limit}
     `.execute(this.database.queries);
     return rows.rows.map(mapMemory);
+  }
+
+  async addRelation(
+    memoryId: MemoryId,
+    relatedMemoryId: MemoryId,
+    now: string,
+  ): Promise<void> {
+    const [firstId, secondId] = normalizeMemoryRelation(
+      memoryId.toString(),
+      relatedMemoryId.toString(),
+    );
+    await this.database.queries
+      .insertInto("memory_relations")
+      .values({ created_at: now, memory_id: firstId, related_memory_id: secondId })
+      .onConflict((oc) => oc.columns(["memory_id", "related_memory_id"]).doNothing())
+      .execute();
+  }
+
+  async removeRelation(
+    memoryId: MemoryId,
+    relatedMemoryId: MemoryId,
+  ): Promise<void> {
+    const [firstId, secondId] = normalizeMemoryRelation(
+      memoryId.toString(),
+      relatedMemoryId.toString(),
+    );
+    await this.database.queries
+      .deleteFrom("memory_relations")
+      .where("memory_id", "=", firstId)
+      .where("related_memory_id", "=", secondId)
+      .execute();
+  }
+
+  async listRelations(memoryId: MemoryId): Promise<readonly Memory[]> {
+    const id = memoryId.toString();
+    const rows = await sql<MemoryRow>`
+      SELECT memories.*
+      FROM memory_relations
+      JOIN memories ON memories.id = CASE
+        WHEN memory_relations.memory_id = ${id} THEN memory_relations.related_memory_id
+        ELSE memory_relations.memory_id
+      END
+      WHERE memory_relations.memory_id = ${id}
+         OR memory_relations.related_memory_id = ${id}
+      ORDER BY memories.created_at DESC, memories.id DESC
+    `.execute(this.database.queries);
+    return rows.rows.map(mapMemory);
+  }
+
+  async listTimeline(
+    memory: Memory,
+    before: number,
+    after: number,
+  ): Promise<MemoryTimeline> {
+    const scopeCondition = memory.projectId === null
+      ? sql`memories.scope = 'personal'`
+      : sql`memories.scope = 'project' AND memories.project_id = ${memory.projectId}`;
+
+    const beforeRows = await sql<MemoryRow>`
+      SELECT *
+      FROM memories
+      WHERE ${scopeCondition}
+        AND (created_at < ${memory.createdAt}
+          OR (created_at = ${memory.createdAt} AND id < ${memory.id.toString()}))
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${before}
+    `.execute(this.database.queries);
+
+    const afterRows = await sql<MemoryRow>`
+      SELECT *
+      FROM memories
+      WHERE ${scopeCondition}
+        AND (created_at > ${memory.createdAt}
+          OR (created_at = ${memory.createdAt} AND id > ${memory.id.toString()}))
+      ORDER BY created_at ASC, id ASC
+      LIMIT ${after}
+    `.execute(this.database.queries);
+
+    return {
+      after: afterRows.rows.map(mapMemory),
+      before: beforeRows.rows.map(mapMemory).reverse(),
+      target: memory,
+    };
   }
 
   async search(

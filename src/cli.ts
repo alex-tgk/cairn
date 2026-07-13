@@ -52,6 +52,7 @@ import {
 } from "./work/work-service.ts";
 import {
   MemoryConflictError,
+  MemoryRelationError,
   MemoryValidationError,
   parseMemoryScope,
   parseMemoryType,
@@ -61,6 +62,10 @@ import {
   saveMemory,
   searchMemories,
   showMemory,
+  getMemoryTimeline,
+  listMemoryRelations,
+  relateMemories,
+  unrelateMemories,
   MemoryAmbiguousReferenceError,
   MemoryNotFoundError,
 } from "./memory/memory-service.ts";
@@ -114,6 +119,10 @@ Usage:
                      [--topic <key>] [--limit <n>] [--path <path>] [--json]
   cairn memory search <query> [--type <type>] [--scope <project|personal>]
                        [--topic <key>] [--limit <n>] [--path <path>] [--json]
+  cairn memory relate <id> <related-id> [--path <path>] [--json]
+  cairn memory unrelate <id> <related-id> [--path <path>] [--json]
+  cairn memory relations <id> [--path <path>] [--json]
+  cairn memory timeline <id> [--before <n>] [--after <n>] [--path <path>] [--json]
   cairn --version
   cairn --help
 `;
@@ -694,6 +703,23 @@ function printMemoryList(
   }
 }
 
+function printMemoryTimeline(
+  timeline: Awaited<ReturnType<typeof getMemoryTimeline>>,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(timeline, null, 2));
+    return;
+  }
+  for (const memory of timeline.before) {
+    console.log(`  ${memory.shortId}: ${memory.title}`);
+  }
+  console.log(`> ${timeline.target.shortId}: ${timeline.target.title}`);
+  for (const memory of timeline.after) {
+    console.log(`  ${memory.shortId}: ${memory.title}`);
+  }
+}
+
 async function runMemoryCommand(
   arguments_: readonly string[],
   json: boolean,
@@ -740,6 +766,43 @@ async function runMemoryCommand(
         path,
         query: primary ?? "",
         ...memoryListFilter(arguments_),
+      }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "relate") {
+    const relatedId = secondary ?? "";
+    await relateMemories({ id: primary ?? "", path, relatedId });
+    printResult({ id: primary ?? "", related: true, relatedId }, json);
+    return 0;
+  }
+
+  if (action === "unrelate") {
+    const relatedId = secondary ?? "";
+    await unrelateMemories({ id: primary ?? "", path, relatedId });
+    printResult({ id: primary ?? "", related: false, relatedId }, json);
+    return 0;
+  }
+
+  if (action === "relations") {
+    printMemoryList(
+      await listMemoryRelations({ id: primary ?? "", path }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "timeline") {
+    const beforeValue = optionValue(arguments_, "--before");
+    const afterValue = optionValue(arguments_, "--after");
+    printMemoryTimeline(
+      await getMemoryTimeline({
+        after: afterValue === undefined ? undefined : Number(afterValue),
+        before: beforeValue === undefined ? undefined : Number(beforeValue),
+        id: primary ?? "",
+        path,
       }),
       json,
     );
@@ -908,6 +971,13 @@ function describeCliError(error: unknown): CliError {
   }
   if (error instanceof MemoryValidationError) {
     return { code: "invalid_memory", details: {}, message: error.message };
+  }
+  if (error instanceof MemoryRelationError) {
+    return {
+      code: error.code,
+      details: { id: error.memoryId },
+      message: error.message,
+    };
   }
   if (error instanceof ProjectNotFoundError) {
     return { code: "project_not_found", details: {}, message: error.message };

@@ -80,7 +80,7 @@ describe("Cairn CLI", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 5,
+      schemaVersion: 6,
     });
   });
 
@@ -906,6 +906,92 @@ describe("Cairn CLI", () => {
     ) as readonly { title: string }[];
     expect(searched).toHaveLength(1);
     expect(searched[0]?.title).toBe("Auth model v2");
+  });
+
+  test("relates memories, lists relations from both sides, unrelates, and shows a timeline", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const first = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "First",
+          "First memory content.",
+          "--type",
+          "discovery",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string };
+    const second = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Second",
+          "Second memory content.",
+          "--type",
+          "discovery",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string };
+
+    runCli(
+      ["memory", "relate", first.id, second.id, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+
+    const relationsFromFirst = JSON.parse(
+      runCli(
+        ["memory", "relations", first.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as readonly { title: string }[];
+    expect(relationsFromFirst.map((memory) => memory.title)).toEqual(["Second"]);
+
+    const relationsFromSecond = JSON.parse(
+      runCli(
+        ["memory", "relations", second.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as readonly { title: string }[];
+    expect(relationsFromSecond.map((memory) => memory.title)).toEqual(["First"]);
+
+    runCli(
+      ["memory", "unrelate", first.id, second.id, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(
+      JSON.parse(
+        runCli(
+          ["memory", "relations", first.id, "--path", workspace, "--json"],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toHaveLength(0);
+
+    const timeline = JSON.parse(
+      runCli(
+        ["memory", "timeline", first.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as {
+      after: readonly { title: string }[];
+      target: { title: string };
+    };
+    expect(timeline.target.title).toBe("First");
+    expect(timeline.after.map((memory) => memory.title)).toEqual(["Second"]);
   });
 
   test("returns a non-zero result outside a Cairn project", () => {

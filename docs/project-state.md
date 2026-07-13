@@ -11,7 +11,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 94 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 98 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -62,11 +62,16 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Topic-key upsert: saving with an existing `(scope, project)` topic updates
   that memory in place, preserves its id, and increments its revision instead
   of creating a duplicate
+- Migration 6 memory-relations storage with a canonical, lexicographically
+  ordered pair constraint for symmetric, idempotent linking
+- `memory relate`, `memory unrelate`, and `memory relations` for
+  cross-memory linking, resolved consistently from either side of a relation
+- `memory timeline` for deterministic before/after chronological context,
+  scoped to a memory's own project or personal visibility boundary
 
 ## Not implemented
 
-- Memory relations, timeline context around a saved memory, pin/archive
-  state, and the `context` primer command
+- Pin/archive state and the `context` primer command
 - Context source discovery and indexing CLI commands and user-facing search
 - Beads and Engram import
 - Backup and restore commands
@@ -74,13 +79,13 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 
 ## Next work slice
 
-Slice 3 (durable memory) has its essential capture, topic-upsert, list, and
-search contract implemented per ADR 0010. Continue Slice 3 with the deferred
-relation, timeline, and session-summary work, or begin wiring the existing
+Slice 3 (durable memory) has capture, topic-upsert, list, search, relations,
+and timeline context implemented per ADR 0010. Continue Slice 3 with the
+deferred pin/archive and session-summary work, or begin wiring the existing
 context-indexing domain (migration 4) to CLI commands as part of Slice 4:
 
-1. Memory relations, timeline context, pin/archive state, and session-summary
-   listing
+1. Pin/archive state and session-summary-specific listing plus the `context`
+   primer command
 2. Context source configuration, refresh/rebuild CLI commands, and
    user-facing search
 3. Stable human and JSON CLI contracts

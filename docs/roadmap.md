@@ -62,8 +62,10 @@ Current progress:
       and a closed type set
 - [x] `memory save` with topic-key upsert, `memory show`, `memory list`, and
       `memory search` against the shared FTS5 projection
-- [ ] Memory relations and cross-memory linking
-- [ ] Timeline context around a saved memory
+- [x] Migration 6 memory relations table; `memory relate`, `memory unrelate`,
+      and `memory relations` for idempotent, symmetric cross-memory linking
+- [x] `memory timeline` for chronological before/after context scoped to a
+      memory's own project/personal visibility boundary
 - [ ] Pin/archive state
 - [ ] Session-summary-specific listing and the `context` primer command
 
