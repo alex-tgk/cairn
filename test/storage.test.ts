@@ -36,7 +36,7 @@ describe("Cairn SQLite storage", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 6,
+      schemaVersion: 7,
     });
 
     database.close();
@@ -70,7 +70,7 @@ describe("Cairn SQLite storage", () => {
 
     const upgradedDatabase = openCairnDatabase(databasePath);
 
-    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(6);
+    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(7);
     expect(
       upgradedDatabase
         .query<{ name: string }, []>(
@@ -139,7 +139,7 @@ describe("Cairn SQLite storage", () => {
 
     const upgradedDatabase = openCairnDatabase(databasePath);
 
-    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(6);
+    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(7);
     expect(
       upgradedDatabase
         .query<{ notes: string; revision: number }, []>(
@@ -223,7 +223,7 @@ describe("Cairn SQLite storage", () => {
 
     const upgradedDatabase = openCairnDatabase(databasePath);
 
-    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(6);
+    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(7);
     expect(
       upgradedDatabase
         .query<{ name: string }, []>(

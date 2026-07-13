@@ -66,6 +66,12 @@ import {
   listMemoryRelations,
   relateMemories,
   unrelateMemories,
+  pinMemory,
+  unpinMemory,
+  archiveMemory,
+  unarchiveMemory,
+  listSessionSummaries,
+  getContextPrimer,
   MemoryAmbiguousReferenceError,
   MemoryNotFoundError,
 } from "./memory/memory-service.ts";
@@ -116,13 +122,22 @@ Usage:
                      [--topic <key>] [--path <path>] [--json]
   cairn memory show <id> [--path <path>] [--json]
   cairn memory list [--type <type>] [--scope <project|personal>]
-                     [--topic <key>] [--limit <n>] [--path <path>] [--json]
+                     [--topic <key>] [--limit <n>] [--include-archived]
+                     [--path <path>] [--json]
   cairn memory search <query> [--type <type>] [--scope <project|personal>]
-                       [--topic <key>] [--limit <n>] [--path <path>] [--json]
+                       [--topic <key>] [--limit <n>] [--include-archived]
+                       [--path <path>] [--json]
   cairn memory relate <id> <related-id> [--path <path>] [--json]
   cairn memory unrelate <id> <related-id> [--path <path>] [--json]
   cairn memory relations <id> [--path <path>] [--json]
   cairn memory timeline <id> [--before <n>] [--after <n>] [--path <path>] [--json]
+  cairn memory pin <id> [--path <path>] [--json]
+  cairn memory unpin <id> [--path <path>] [--json]
+  cairn memory archive <id> [--path <path>] [--json]
+  cairn memory unarchive <id> [--path <path>] [--json]
+  cairn memory sessions [--scope <project|personal>] [--limit <n>]
+                        [--path <path>] [--json]
+  cairn memory context [--limit <n>] [--path <path>] [--json]
   cairn --version
   cairn --help
 `;
@@ -676,6 +691,7 @@ function memoryListFilter(arguments_: readonly string[]) {
     }
   }
   return {
+    includeArchived: hasFlag(arguments_, "--include-archived") || undefined,
     limit,
     scope: scopeValue === undefined ? undefined : parseMemoryScope(scopeValue),
     topic,
@@ -697,8 +713,9 @@ function printMemoryList(
   }
   for (const memory of memories) {
     const topic = memory.topic === null ? "" : ` #${memory.topic}`;
+    const markers = `${memory.pinned ? " 📌" : ""}${memory.archived ? " (archived)" : ""}`;
     console.log(
-      `${memory.shortId}: ${memory.title} [${memory.type}, ${memory.scope}]${topic}`,
+      `${memory.shortId}: ${memory.title} [${memory.type}, ${memory.scope}]${topic}${markers}`,
     );
   }
 }
@@ -717,6 +734,36 @@ function printMemoryTimeline(
   console.log(`> ${timeline.target.shortId}: ${timeline.target.title}`);
   for (const memory of timeline.after) {
     console.log(`  ${memory.shortId}: ${memory.title}`);
+  }
+}
+
+function printContextPrimer(
+  primer: Awaited<ReturnType<typeof getContextPrimer>>,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(primer, null, 2));
+    return;
+  }
+  console.log("Pinned memories:");
+  if (primer.pinnedMemories.length === 0) {
+    console.log("  (none)");
+  }
+  for (const memory of primer.pinnedMemories) {
+    console.log(`  ${memory.shortId}: ${memory.title}`);
+  }
+  console.log("Most recent session summary:");
+  console.log(
+    primer.recentSessionSummary === null
+      ? "  (none)"
+      : `  ${primer.recentSessionSummary.shortId}: ${primer.recentSessionSummary.title}`,
+  );
+  console.log("Recent memories:");
+  if (primer.recentMemories.length === 0) {
+    console.log("  (none)");
+  }
+  for (const memory of primer.recentMemories) {
+    console.log(`  ${memory.shortId}: ${memory.title} [${memory.type}]`);
   }
 }
 
@@ -803,6 +850,59 @@ async function runMemoryCommand(
         before: beforeValue === undefined ? undefined : Number(beforeValue),
         id: primary ?? "",
         path,
+      }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "pin") {
+    printResult(await pinMemory({ id: primary ?? "", path }), json);
+    return 0;
+  }
+
+  if (action === "unpin") {
+    printResult(await unpinMemory({ id: primary ?? "", path }), json);
+    return 0;
+  }
+
+  if (action === "archive") {
+    printResult(await archiveMemory({ id: primary ?? "", path }), json);
+    return 0;
+  }
+
+  if (action === "unarchive") {
+    printResult(await unarchiveMemory({ id: primary ?? "", path }), json);
+    return 0;
+  }
+
+  if (action === "sessions") {
+    const scopeValue = optionValue(arguments_, "--scope");
+    const limitValue = optionValue(arguments_, "--limit");
+    let limit: number | undefined;
+    if (limitValue !== undefined) {
+      limit = Number(limitValue);
+      if (!Number.isInteger(limit) || limit < 1) {
+        throw new MemoryValidationError("Result limit must be a positive integer");
+      }
+    }
+    printMemoryList(
+      await listSessionSummaries({
+        limit,
+        path,
+        scope: scopeValue === undefined ? undefined : parseMemoryScope(scopeValue),
+      }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "context") {
+    const limitValue = optionValue(arguments_, "--limit");
+    printContextPrimer(
+      await getContextPrimer({
+        path,
+        recentLimit: limitValue === undefined ? undefined : Number(limitValue),
       }),
       json,
     );

@@ -10,6 +10,8 @@ import {
 import { CairnQueryDatabase } from "../src/storage/query-database.ts";
 import {
   createMemory,
+  setMemoryArchived,
+  setMemoryPinned,
   upsertMemory,
   MemoryConflictError,
   MemoryId,
@@ -422,6 +424,126 @@ describe("SQLite memory repository", () => {
     expect(timeline.after.map((memory) => memory.title.toString())).toEqual([
       "Later",
     ]);
+
+    await queryDatabase.close();
+  });
+
+  test("pins and unpins a memory while incrementing its revision", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteMemoryRepository(queryDatabase);
+
+    const memory = createMemory({
+      content: "Pin me.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a50"),
+      now: "2026-07-13T12:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Pinnable",
+      type: "discovery",
+    });
+    await repository.create(memory);
+
+    const pinTransition = setMemoryPinned(memory, true, "2026-07-13T12:01:00.000Z");
+    await repository.applyLifecycleTransition(pinTransition);
+
+    const pinned = await repository.findById(memory.id);
+    expect(pinned?.pinned).toBe(true);
+    expect(pinned?.revision).toBe(2);
+
+    const unpinTransition = setMemoryPinned(
+      pinned!,
+      false,
+      "2026-07-13T12:02:00.000Z",
+    );
+    await repository.applyLifecycleTransition(unpinTransition);
+
+    const unpinned = await repository.findById(memory.id);
+    expect(unpinned?.pinned).toBe(false);
+    expect(unpinned?.revision).toBe(3);
+
+    await queryDatabase.close();
+  });
+
+  test("archives a memory and excludes it from listings unless included explicitly", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteMemoryRepository(queryDatabase);
+
+    const memory = createMemory({
+      content: "Archive me.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a51"),
+      now: "2026-07-13T12:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Archivable",
+      type: "discovery",
+    });
+    await repository.create(memory);
+
+    const archiveTransition = setMemoryArchived(
+      memory,
+      true,
+      "2026-07-13T12:01:00.000Z",
+    );
+    await repository.applyLifecycleTransition(archiveTransition);
+
+    const visible = await repository.listByProject(PROJECT_ID);
+    expect(visible.map((entry) => entry.title.toString())).not.toContain(
+      "Archivable",
+    );
+
+    const includingArchived = await repository.listByProject(PROJECT_ID, {
+      includeArchived: true,
+    });
+    expect(
+      includingArchived.map((entry) => entry.title.toString()),
+    ).toContain("Archivable");
+
+    const archived = await repository.findById(memory.id);
+    expect(archived?.archived).toBe(true);
+    expect(archived?.revision).toBe(2);
+
+    const unarchiveTransition = setMemoryArchived(
+      archived!,
+      false,
+      "2026-07-13T12:02:00.000Z",
+    );
+    await repository.applyLifecycleTransition(unarchiveTransition);
+
+    const visibleAgain = await repository.listByProject(PROJECT_ID);
+    expect(visibleAgain.map((entry) => entry.title.toString())).toContain(
+      "Archivable",
+    );
+
+    await queryDatabase.close();
+  });
+
+  test("rejects a lifecycle transition against a stale revision", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteMemoryRepository(queryDatabase);
+
+    const memory = createMemory({
+      content: "Stale target.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a52"),
+      now: "2026-07-13T12:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Stale",
+      type: "discovery",
+    });
+    await repository.create(memory);
+
+    await repository.applyLifecycleTransition(
+      setMemoryPinned(memory, true, "2026-07-13T12:01:00.000Z"),
+    );
+
+    await expect(
+      repository.applyLifecycleTransition(
+        setMemoryPinned(memory, true, "2026-07-13T12:02:00.000Z"),
+      ),
+    ).rejects.toBeInstanceOf(MemoryConflictError);
 
     await queryDatabase.close();
   });

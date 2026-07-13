@@ -158,9 +158,11 @@ export type ContextIndexRunTable = Readonly<{
 }>;
 
 export type MemoryTable = Readonly<{
+  archived: number;
   content: string;
   created_at: string;
   id: string;
+  pinned: number;
   project_id: string | null;
   revision: number;
   scope: MemoryScope;
