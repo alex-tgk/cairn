@@ -80,7 +80,7 @@ describe("Cairn CLI", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 2,
+      schemaVersion: 3,
     });
   });
 
@@ -288,6 +288,139 @@ describe("Cairn CLI", () => {
       dataDirectory,
     );
     expect(JSON.parse(unassigned.stdout)).toMatchObject({ assignee: null });
+  });
+
+  test("resolves short references and protects explicit revisions", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+    const created = runCli(
+      ["work", "create", "Versioned work", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    const item = JSON.parse(created.stdout) as {
+      id: string;
+      notes: string;
+      revision: number;
+      shortId: string;
+    };
+
+    expect(item).toMatchObject({ notes: "", revision: 1 });
+    expect(item.shortId).toHaveLength(8);
+    const shown = runCli(
+      ["work", "show", item.shortId, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(JSON.parse(shown.stdout)).toMatchObject({ id: item.id, revision: 1 });
+
+    const updated = runCli(
+      [
+        "work",
+        "update",
+        item.shortId,
+        "--title",
+        "Updated once",
+        "--if-revision",
+        "1",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    expect(JSON.parse(updated.stdout)).toMatchObject({ revision: 2 });
+
+    const stale = runCli(
+      [
+        "work",
+        "close",
+        item.shortId,
+        "--if-revision",
+        "1",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    expect(stale.exitCode).toBe(1);
+    expect(JSON.parse(stale.stderr)).toMatchObject({
+      error: {
+        code: "work_conflict",
+        details: { actualRevision: 2, expectedRevision: 1, id: item.id },
+      },
+    });
+  });
+
+  test("makes same-assignee claims idempotent and rejects claim stealing", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+    const created = runCli(
+      ["work", "create", "Claim once", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    const id = (JSON.parse(created.stdout) as { id: string }).id;
+
+    const claimed = runCli(
+      [
+        "work",
+        "claim",
+        id,
+        "--assignee",
+        "agent-codex",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    const retried = runCli(
+      [
+        "work",
+        "claim",
+        id,
+        "--assignee",
+        "agent-codex",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    const stolen = runCli(
+      [
+        "work",
+        "claim",
+        id,
+        "--assignee",
+        "agent-copilot",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    const history = runCli(
+      ["work", "history", id, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+
+    expect(JSON.parse(claimed.stdout)).toMatchObject({ revision: 2 });
+    expect(JSON.parse(retried.stdout)).toMatchObject({ revision: 2 });
+    expect(JSON.parse(history.stdout)).toHaveLength(2);
+    expect(stolen.exitCode).toBe(1);
+    expect(JSON.parse(stolen.stderr)).toMatchObject({
+      error: {
+        code: "claim_conflict",
+        details: {
+          currentAssignee: "agent-codex",
+          requestedAssignee: "agent-copilot",
+        },
+      },
+    });
   });
 
   test("returns a non-zero result outside a Cairn project", () => {

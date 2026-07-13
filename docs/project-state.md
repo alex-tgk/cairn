@@ -11,7 +11,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 33 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 53 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -34,10 +34,17 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Transactional audit events and synchronized work-item search projections
 - Typed Kysely work-item queries behind an async repository port, with explicit
   immediate SQLite transactions and embedded migrations preserved
+- Migration 3 work extensions with aggregate and event revisions plus allocated
+  hierarchy, dependency, label, comment, and notes storage
+- Compare-and-set work mutations, conflict-safe claims, explicit revision guards,
+  and project-local unambiguous UUID-prefix references
+- Structured JSON errors for work conflicts, claim conflicts, ambiguous references,
+  validation failures, and missing work
 
 ## Not implemented
 
-- Dependencies, ready/blocked queries, comments, labels, or notes
+- Dependency and hierarchy commands, ready/blocked queries, comments, labels, or
+  note commands
 - Durable memory, sessions, topics, relations, or timelines
 - Context source discovery, incremental indexing, or user-facing search
 - Beads and Engram import

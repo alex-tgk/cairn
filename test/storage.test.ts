@@ -36,7 +36,7 @@ describe("Cairn SQLite storage", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 2,
+      schemaVersion: 3,
     });
 
     database.close();
@@ -70,7 +70,7 @@ describe("Cairn SQLite storage", () => {
 
     const upgradedDatabase = openCairnDatabase(databasePath);
 
-    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(2);
+    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(3);
     expect(
       upgradedDatabase
         .query<{ name: string }, []>(
@@ -78,6 +78,101 @@ describe("Cairn SQLite storage", () => {
         )
         .get(),
     ).toEqual({ name: "work_items" });
+    upgradedDatabase.close();
+  });
+
+  test("upgrades version 2 work history and allocates the complete work schema", () => {
+    const databasePath = createDatabasePath();
+    const versionOne = MIGRATIONS[0];
+    const versionTwo = MIGRATIONS[1];
+    if (!versionOne || !versionTwo) {
+      throw new Error("Cairn work migrations are missing");
+    }
+    const originalDatabase = new Database(databasePath, {
+      create: true,
+      strict: true,
+    });
+    originalDatabase.exec(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        applied_at TEXT NOT NULL
+      ) STRICT;
+    `);
+    originalDatabase.exec(versionOne.sql);
+    originalDatabase.exec(versionTwo.sql);
+    originalDatabase
+      .query<void, [number, string, number, string]>(
+        `INSERT INTO schema_migrations(version, name, applied_at)
+         VALUES (?, ?, '${NOW}'), (?, ?, '${NOW}')`,
+      )
+      .run(
+        versionOne.version,
+        versionOne.name,
+        versionTwo.version,
+        versionTwo.name,
+      );
+    originalDatabase
+      .query<void, [string, string, string, string]>(
+        `INSERT INTO projects(id, name, created_at, updated_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(PROJECT_ID, "Cairn", NOW, NOW);
+    originalDatabase
+      .query<void, [string, string, string, string, string]>(
+        `INSERT INTO work_items(
+           id, project_id, title, status, assignee, created_at, updated_at,
+           claimed_at
+         ) VALUES ('018f4f32-95d6-7d6d-9f54-1d6d7a6d9a20', ?, ?,
+                   'in_progress', 'agent-codex', ?, ?, ?)`,
+      )
+      .run(PROJECT_ID, "Existing work", NOW, NOW, NOW);
+    originalDatabase.exec(`
+      INSERT INTO work_item_events(
+        work_item_id, event_type, payload_json, created_at
+      ) VALUES
+        ('018f4f32-95d6-7d6d-9f54-1d6d7a6d9a20', 'created', '{}', '${NOW}'),
+        ('018f4f32-95d6-7d6d-9f54-1d6d7a6d9a20', 'claimed', '{}',
+         '2026-07-12T13:00:00.000Z');
+    `);
+    originalDatabase.close();
+
+    const upgradedDatabase = openCairnDatabase(databasePath);
+
+    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(3);
+    expect(
+      upgradedDatabase
+        .query<{ notes: string; revision: number }, []>(
+          "SELECT notes, revision FROM work_items",
+        )
+        .get(),
+    ).toEqual({ notes: "", revision: 2 });
+    expect(
+      upgradedDatabase
+        .query<{ revision: number }, []>(
+          "SELECT revision FROM work_item_events ORDER BY id",
+        )
+        .all(),
+    ).toEqual([{ revision: 1 }, { revision: 2 }]);
+    expect(
+      upgradedDatabase
+        .query<{ name: string }, []>(
+          `SELECT name FROM sqlite_schema
+           WHERE type = 'table'
+             AND name IN (
+               'work_item_hierarchy', 'work_item_dependencies',
+               'work_item_labels', 'work_item_comments'
+             )
+           ORDER BY name`,
+        )
+        .all()
+        .map(({ name }) => name),
+    ).toEqual([
+      "work_item_comments",
+      "work_item_dependencies",
+      "work_item_hierarchy",
+      "work_item_labels",
+    ]);
     upgradedDatabase.close();
   });
 

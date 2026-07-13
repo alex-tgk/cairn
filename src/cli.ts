@@ -15,6 +15,10 @@ import {
 } from "./storage/database.ts";
 import {
   parseWorkItemType,
+  WorkItemClaimConflictError,
+  WorkItemConflictError,
+  WorkItemTransitionError,
+  WorkItemValidationError,
   type WorkItemChanges,
 } from "./work/work-item.ts";
 import {
@@ -26,6 +30,8 @@ import {
   reopenWork,
   showWork,
   updateWork,
+  WorkItemAmbiguousReferenceError,
+  WorkItemNotFoundError,
 } from "./work/work-service.ts";
 
 const HELP = `Cairn ${packageJson.version}
@@ -38,13 +44,14 @@ Usage:
                     [--type <type>] [--assignee <name>] [--path <path>] [--json]
   cairn work show <id> [--path <path>] [--json]
   cairn work list [--path <path>] [--json]
-  cairn work claim <id> --assignee <name> [--path <path>] [--json]
-  cairn work close <id> [--path <path>] [--json]
-  cairn work reopen <id> [--path <path>] [--json]
+  cairn work claim <id> --assignee <name> [--if-revision <n>] [--path <path>] [--json]
+  cairn work close <id> [--if-revision <n>] [--path <path>] [--json]
+  cairn work reopen <id> [--if-revision <n>] [--path <path>] [--json]
   cairn work history <id> [--path <path>] [--json]
   cairn work update <id> [--title <text>] [--description <text>]
                     [--priority <0-4>] [--type <type>]
                     [--assignee <name> | --clear-assignee]
+                    [--if-revision <n>]
                     [--path <path>] [--json]
   cairn --version
   cairn --help
@@ -71,6 +78,20 @@ function optionValue(
     throw new Error(`Missing value for ${option}`);
   }
   return value;
+}
+
+function optionalRevision(arguments_: readonly string[]): number | undefined {
+  const value = optionValue(arguments_, "--if-revision");
+  if (value === undefined) {
+    return undefined;
+  }
+  const revision = Number(value);
+  if (!Number.isInteger(revision) || revision < 1) {
+    throw new WorkItemValidationError(
+      "Expected revision must be a positive integer",
+    );
+  }
+  return revision;
 }
 
 function workItemChanges(arguments_: readonly string[]): WorkItemChanges {
@@ -118,7 +139,7 @@ function printWorkList(
   }
   for (const item of items) {
     console.log(
-      `${item.id}: ${item.title} [${item.status}, p${item.priority}, ${item.type}]`,
+      `${item.shortId}: ${item.title} [${item.status}, p${item.priority}, ${item.type}]`,
     );
   }
 }
@@ -133,7 +154,7 @@ function printWorkHistory(
   }
   for (const event of events) {
     console.log(
-      `${event.createdAt}: ${event.eventType} ${JSON.stringify(event.payload)}`,
+      `${event.createdAt}: r${event.revision} ${event.eventType} ${JSON.stringify(event.payload)}`,
     );
   }
 }
@@ -176,6 +197,7 @@ async function runWorkCommand(
     printResult(
       await claimWork({
         assignee: optionValue(arguments_, "--assignee") ?? "",
+        expectedRevision: optionalRevision(arguments_),
         id: primary ?? "",
         path,
       }),
@@ -185,12 +207,26 @@ async function runWorkCommand(
   }
 
   if (action === "close") {
-    printResult(await closeWork({ id: primary ?? "", path }), json);
+    printResult(
+      await closeWork({
+        expectedRevision: optionalRevision(arguments_),
+        id: primary ?? "",
+        path,
+      }),
+      json,
+    );
     return 0;
   }
 
   if (action === "reopen") {
-    printResult(await reopenWork({ id: primary ?? "", path }), json);
+    printResult(
+      await reopenWork({
+        expectedRevision: optionalRevision(arguments_),
+        id: primary ?? "",
+        path,
+      }),
+      json,
+    );
     return 0;
   }
 
@@ -206,6 +242,7 @@ async function runWorkCommand(
     printResult(
       await updateWork({
         changes: workItemChanges(arguments_),
+        expectedRevision: optionalRevision(arguments_),
         id: primary ?? "",
         path,
       }),
@@ -270,16 +307,82 @@ export async function runCli(arguments_: readonly string[]): Promise<number> {
   return 2;
 }
 
+type CliError = Readonly<{
+  code: string;
+  details: Readonly<Record<string, unknown>>;
+  message: string;
+}>;
+
+function describeCliError(error: unknown): CliError {
+  if (error instanceof WorkItemConflictError) {
+    return {
+      code: error.code,
+      details: {
+        actualRevision: error.actualRevision,
+        expectedRevision: error.expectedRevision,
+        id: error.workItemId,
+      },
+      message: error.message,
+    };
+  }
+  if (error instanceof WorkItemClaimConflictError) {
+    return {
+      code: error.code,
+      details: {
+        currentAssignee: error.currentAssignee,
+        id: error.workItemId,
+        requestedAssignee: error.requestedAssignee,
+      },
+      message: error.message,
+    };
+  }
+  if (error instanceof WorkItemAmbiguousReferenceError) {
+    return {
+      code: error.code,
+      details: {
+        candidates: error.candidateIds,
+        reference: error.reference,
+      },
+      message: error.message,
+    };
+  }
+  if (error instanceof WorkItemNotFoundError) {
+    return {
+      code: error.code,
+      details: { reference: error.reference },
+      message: error.message,
+    };
+  }
+  if (error instanceof WorkItemValidationError) {
+    return { code: "invalid_work_item", details: {}, message: error.message };
+  }
+  if (error instanceof WorkItemTransitionError) {
+    return { code: "invalid_transition", details: {}, message: error.message };
+  }
+  if (error instanceof ProjectNotFoundError) {
+    return { code: "project_not_found", details: {}, message: error.message };
+  }
+  return {
+    code: "command_failed",
+    details: {},
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
+
+function printCliError(error: unknown, json: boolean): void {
+  const described = describeCliError(error);
+  if (json) {
+    console.error(JSON.stringify({ error: described }, null, 2));
+    return;
+  }
+  console.error(described.message);
+}
+
 if (import.meta.main) {
   try {
     process.exitCode = await runCli(process.argv.slice(2));
   } catch (error) {
-    if (error instanceof ProjectNotFoundError) {
-      console.error(error.message);
-      process.exitCode = 1;
-    } else {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
-    }
+    printCliError(error, process.argv.includes("--json"));
+    process.exitCode = 1;
   }
 }

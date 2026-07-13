@@ -11,6 +11,7 @@ import {
 } from "../storage/query-database.ts";
 import {
   restoreWorkItem,
+  WorkItemConflictError,
   WorkItemId,
   WorkItemPriority,
   WorkItemTitle,
@@ -33,8 +34,10 @@ function mapWorkItem(row: WorkItemRow): WorkItem {
     createdAt: row.created_at,
     description: row.description,
     id: WorkItemId.from(row.id),
+    notes: row.notes,
     priority: WorkItemPriority.from(row.priority),
     projectId: row.project_id,
+    revision: row.revision,
     status: row.status,
     title: WorkItemTitle.from(row.title),
     type: row.type,
@@ -64,6 +67,7 @@ function mapWorkItemEvent(row: WorkItemEventRow): WorkItemEvent {
     eventType: row.event_type,
     id: row.id,
     payload: parseEventPayload(row.payload_json),
+    revision: row.revision,
     workItemId: row.work_item_id,
   };
 }
@@ -71,6 +75,14 @@ function mapWorkItemEvent(row: WorkItemEventRow): WorkItemEvent {
 function searchTags(item: WorkItem): string {
   return `${item.type} ${item.status} p${item.priority.toNumber()}`;
 }
+
+function searchBody(item: WorkItem): string {
+  return item.notes.length === 0
+    ? item.description
+    : `${item.description}\n${item.notes}`;
+}
+
+const UUID_PREFIX_PATTERN = /^[0-9a-f-]+$/u;
 
 export class SqliteWorkItemRepository implements WorkItemRepository {
   constructor(private readonly database: CairnQueryDatabase) {}
@@ -85,7 +97,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
 
   async applyTransition(transition: WorkItemTransition): Promise<void> {
     await this.database.immediateTransaction(async (database) => {
-      await this.updateWorkItem(database, transition.item);
+      await this.updateWorkItem(database, transition);
       await this.insertEvent(database, transition.item.id, transition.event);
       await this.updateSearchProjection(database, transition.item);
     });
@@ -99,6 +111,39 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
       .where("id", "=", id.toString())
       .executeTakeFirst();
     return row ? mapWorkItem(row) : null;
+  }
+
+  async findByReference(
+    projectId: string,
+    reference: string,
+  ): Promise<readonly WorkItem[]> {
+    const normalized = reference.trim().toLowerCase();
+    const exact = await this.database.queries
+      .selectFrom("work_items")
+      .selectAll()
+      .where("project_id", "=", projectId)
+      .where("id", "=", normalized)
+      .executeTakeFirst();
+    if (exact) {
+      return [mapWorkItem(exact)];
+    }
+
+    const hexadecimalLength = normalized.replaceAll("-", "").length;
+    if (
+      hexadecimalLength < 6
+      || !UUID_PREFIX_PATTERN.test(normalized)
+    ) {
+      return [];
+    }
+
+    const matches = await this.database.queries
+      .selectFrom("work_items")
+      .selectAll()
+      .where("project_id", "=", projectId)
+      .where("id", "like", `${normalized}%`)
+      .orderBy("id", "asc")
+      .execute();
+    return matches.map(mapWorkItem);
   }
 
   async listByProject(projectId: string): Promise<readonly WorkItem[]> {
@@ -126,6 +171,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
         "event.event_type",
         "event.payload_json",
         "event.created_at",
+        "event.revision",
       ])
       .where("item.project_id", "=", projectId)
       .where("item.id", "=", id.toString())
@@ -148,8 +194,10 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
         created_at: item.createdAt,
         description: item.description,
         id: item.id.toString(),
+        notes: item.notes,
         priority: item.priority.toNumber(),
         project_id: item.projectId,
+        revision: item.revision,
         status: item.status,
         title: item.title.toString(),
         type: item.type,
@@ -170,6 +218,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
         status: item.status,
         type: item.type,
       },
+      revision: item.revision,
     });
   }
 
@@ -180,7 +229,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
     await database
       .insertInto("search_entries")
       .values({
-        body: item.description,
+        body: searchBody(item),
         created_at: item.createdAt,
         entity_id: item.id.toString(),
         entity_kind: "work_item",
@@ -196,8 +245,9 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
 
   private async updateWorkItem(
     database: Kysely<CairnDatabaseSchema>,
-    item: WorkItem,
+    transition: WorkItemTransition,
   ): Promise<void> {
+    const item = transition.item;
     const result = await database
       .updateTable("work_items")
       .set({
@@ -205,7 +255,9 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
         claimed_at: item.claimedAt,
         closed_at: item.closedAt,
         description: item.description,
+        notes: item.notes,
         priority: item.priority.toNumber(),
+        revision: item.revision,
         status: item.status,
         title: item.title.toString(),
         type: item.type,
@@ -213,9 +265,13 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
       })
       .where("project_id", "=", item.projectId)
       .where("id", "=", item.id.toString())
+      .where("revision", "=", transition.expectedRevision)
       .executeTakeFirst();
     if (result.numUpdatedRows === 0n) {
-      throw new Error(`Work item not found: ${item.id.toString()}`);
+      throw new WorkItemConflictError(
+        item.id.toString(),
+        transition.expectedRevision,
+      );
     }
   }
 
@@ -230,6 +286,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
         created_at: event.createdAt,
         event_type: event.eventType,
         payload_json: JSON.stringify(event.payload),
+        revision: event.revision,
         work_item_id: id.toString(),
       })
       .execute();
@@ -242,7 +299,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
     const result = await database
       .updateTable("search_entries")
       .set({
-        body: item.description,
+        body: searchBody(item),
         tags: searchTags(item),
         title: item.title.toString(),
         updated_at: item.updatedAt,

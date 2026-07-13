@@ -10,6 +10,7 @@ import {
   createWorkItem,
   reopenWorkItem,
   updateWorkItem,
+  WorkItemConflictError,
   WorkItemId,
   type WorkItem,
   type WorkItemChanges,
@@ -27,8 +28,11 @@ export type WorkItemView = Readonly<{
   createdAt: string;
   description: string;
   id: string;
+  notes: string;
   priority: number;
   projectId: string;
+  revision: number;
+  shortId: string;
   status: WorkItemStatus;
   title: string;
   type: WorkItemType;
@@ -53,13 +57,33 @@ type CreateWorkOptions = WorkContextOptions &
 
 type ShowWorkOptions = WorkContextOptions & Readonly<{ id: string }>;
 type TransitionWorkOptions = ShowWorkOptions &
-  Readonly<{ now?: (() => string) | undefined }>;
+  Readonly<{
+    expectedRevision?: number | undefined;
+    now?: (() => string) | undefined;
+  }>;
 type ClaimWorkOptions = TransitionWorkOptions & Readonly<{ assignee: string }>;
 type UpdateWorkOptions = TransitionWorkOptions &
   Readonly<{ changes: WorkItemChanges }>;
 
 export class WorkItemNotFoundError extends Error {
+  readonly code = "work_not_found";
   override readonly name = "WorkItemNotFoundError";
+
+  constructor(readonly reference: string) {
+    super(`Work item not found: ${reference}`);
+  }
+}
+
+export class WorkItemAmbiguousReferenceError extends Error {
+  readonly code = "ambiguous_work_reference";
+  override readonly name = "WorkItemAmbiguousReferenceError";
+
+  constructor(
+    readonly reference: string,
+    readonly candidateIds: readonly string[],
+  ) {
+    super(`Ambiguous work item reference: ${reference}`);
+  }
 }
 
 function resolveWorkProject(options: WorkContextOptions) {
@@ -73,15 +97,19 @@ function resolveWorkProject(options: WorkContextOptions) {
 }
 
 function toWorkItemView(item: WorkItem): WorkItemView {
+  const id = item.id.toString();
   return {
     assignee: item.assignee,
     claimedAt: item.claimedAt,
     closedAt: item.closedAt,
     createdAt: item.createdAt,
     description: item.description,
-    id: item.id.toString(),
+    id,
+    notes: item.notes,
     priority: item.priority.toNumber(),
     projectId: item.projectId,
+    revision: item.revision,
+    shortId: id.replaceAll("-", "").slice(0, 8),
     status: item.status,
     title: item.title.toString(),
     type: item.type,
@@ -113,29 +141,54 @@ async function withWorkRepository<Result>(
 async function requireWorkItem(
   repository: WorkItemRepository,
   projectId: string,
-  id: WorkItemId,
+  reference: string,
 ): Promise<WorkItem> {
-  const item = await repository.findById(projectId, id);
+  const matches = await repository.findByReference(projectId, reference);
+  const item = matches[0];
   if (!item) {
-    throw new WorkItemNotFoundError(`Work item not found: ${id.toString()}`);
+    throw new WorkItemNotFoundError(reference);
+  }
+  if (matches.length > 1) {
+    throw new WorkItemAmbiguousReferenceError(
+      reference,
+      matches.map(({ id }) => id.toString()),
+    );
   }
   return item;
 }
 
+function requireExpectedRevision(
+  item: WorkItem,
+  expectedRevision: number | undefined,
+): void {
+  if (expectedRevision === undefined || expectedRevision === item.revision) {
+    return;
+  }
+  throw new WorkItemConflictError(
+    item.id.toString(),
+    expectedRevision,
+    item.revision,
+  );
+}
+
 async function transitionWork(
   options: TransitionWorkOptions,
-  transition: (item: WorkItem, now: string) => WorkItemTransition,
+  transition: (item: WorkItem, now: string) => WorkItemTransition | null,
 ): Promise<WorkItemView> {
   return withWorkRepository(options, async (repository, projectId) => {
     const item = await requireWorkItem(
       repository,
       projectId,
-      WorkItemId.from(options.id),
+      options.id,
     );
+    requireExpectedRevision(item, options.expectedRevision);
     const result = transition(
       item,
       (options.now ?? (() => new Date().toISOString()))(),
     );
+    if (!result) {
+      return toWorkItemView(item);
+    }
     await repository.applyTransition(result);
     return toWorkItemView(result.item);
   });
@@ -168,7 +221,7 @@ export async function showWork(
       await requireWorkItem(
         repository,
         projectId,
-        WorkItemId.from(options.id),
+        options.id,
       ),
     ),
   );
@@ -214,8 +267,7 @@ export async function listWorkHistory(
   options: ShowWorkOptions,
 ): Promise<readonly WorkItemEvent[]> {
   return withWorkRepository(options, async (repository, projectId) => {
-    const id = WorkItemId.from(options.id);
-    await requireWorkItem(repository, projectId, id);
-    return await repository.listEvents(projectId, id);
+    const item = await requireWorkItem(repository, projectId, options.id);
+    return await repository.listEvents(projectId, item.id);
   });
 }

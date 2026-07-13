@@ -48,8 +48,10 @@ export type WorkItemTable = Readonly<{
   created_at: string;
   description: string;
   id: string;
+  notes: string;
   priority: number;
   project_id: string;
+  revision: number;
   status: WorkItemStatus;
   title: string;
   type: WorkItemType;
@@ -61,6 +63,38 @@ export type WorkItemEventTable = Readonly<{
   event_type: WorkItemEventType;
   id: Generated<number>;
   payload_json: string;
+  revision: number;
+  work_item_id: string;
+}>;
+
+export type WorkItemHierarchyTable = Readonly<{
+  child_id: string;
+  created_at: string;
+  parent_id: string;
+  project_id: string;
+}>;
+
+export type WorkItemDependencyTable = Readonly<{
+  blocked_id: string;
+  blocker_id: string;
+  created_at: string;
+  project_id: string;
+}>;
+
+export type WorkItemLabelTable = Readonly<{
+  created_at: string;
+  label: string;
+  project_id: string;
+  work_item_id: string;
+}>;
+
+export type WorkItemCommentTable = Readonly<{
+  author: string;
+  body: string;
+  created_at: string;
+  id: Generated<number>;
+  project_id: string;
+  revision: number;
   work_item_id: string;
 }>;
 
@@ -74,7 +108,11 @@ export interface CairnDatabaseSchema {
   projects: ProjectTable;
   schema_migrations: SchemaMigrationTable;
   search_entries: SearchEntryTable;
+  work_item_comments: WorkItemCommentTable;
+  work_item_dependencies: WorkItemDependencyTable;
   work_item_events: WorkItemEventTable;
+  work_item_hierarchy: WorkItemHierarchyTable;
+  work_item_labels: WorkItemLabelTable;
   work_items: WorkItemTable;
   workspaces: WorkspaceTable;
 }

@@ -6,6 +6,7 @@ import {
   createWorkItem,
   reopenWorkItem,
   updateWorkItem,
+  WorkItemClaimConflictError,
   WorkItemId,
   WorkItemTransitionError,
 } from "../src/work/work-item.ts";
@@ -22,6 +23,10 @@ function createFixture() {
 }
 
 describe("work-item lifecycle", () => {
+  test("starts at revision one with empty notes", () => {
+    expect(createFixture()).toMatchObject({ notes: "", revision: 1 });
+  });
+
   test("claims open work for an explicit assignee", () => {
     const transition = claimWorkItem(
       createFixture(),
@@ -29,25 +34,90 @@ describe("work-item lifecycle", () => {
       "2026-07-12T13:00:00.000Z",
     );
 
+    expect(transition).not.toBeNull();
+    if (!transition) {
+      throw new Error("Expected claim transition");
+    }
     expect(transition.item).toMatchObject({
       assignee: "agent-codex",
       claimedAt: "2026-07-12T13:00:00.000Z",
       status: "in_progress",
       updatedAt: "2026-07-12T13:00:00.000Z",
+      revision: 2,
     });
+    expect(transition.expectedRevision).toBe(1);
     expect(transition.event).toEqual({
       createdAt: "2026-07-12T13:00:00.000Z",
       eventType: "claimed",
       payload: { assignee: "agent-codex", status: "in_progress" },
+      revision: 2,
     });
   });
 
-  test("closes and reopens work without discarding its assignee", () => {
-    const claimed = claimWorkItem(
+  test("treats a repeated claim by the same assignee as a no-op", () => {
+    const first = claimWorkItem(
       createFixture(),
       "agent-codex",
       "2026-07-12T13:00:00.000Z",
+    );
+    if (!first) {
+      throw new Error("Expected first claim transition");
+    }
+
+    expect(
+      claimWorkItem(
+        first.item,
+        "agent-codex",
+        "2026-07-12T14:00:00.000Z",
+      ),
+    ).toBeNull();
+  });
+
+  test("does not let another assignee overwrite a claim", () => {
+    const first = claimWorkItem(
+      createFixture(),
+      "agent-codex",
+      "2026-07-12T13:00:00.000Z",
+    );
+    if (!first) {
+      throw new Error("Expected first claim transition");
+    }
+
+    expect(() =>
+      claimWorkItem(
+        first.item,
+        "agent-copilot",
+        "2026-07-12T14:00:00.000Z",
+      ),
+    ).toThrow(WorkItemClaimConflictError);
+  });
+
+  test("does not claim open work assigned to someone else", () => {
+    const assigned = updateWorkItem(
+      createFixture(),
+      { assignee: "agent-codex" },
+      "2026-07-12T13:00:00.000Z",
     ).item;
+
+    expect(() =>
+      claimWorkItem(
+        assigned,
+        "agent-copilot",
+        "2026-07-12T14:00:00.000Z",
+      ),
+    ).toThrow(WorkItemClaimConflictError);
+  });
+
+  test("closes and reopens work without discarding its assignee", () => {
+    const claim = claimWorkItem(
+      createFixture(),
+      "agent-codex",
+      "2026-07-12T13:00:00.000Z",
+    );
+    if (!claim) {
+      throw new Error("Expected claim transition");
+    }
+    const claimed = claim.item;
     const closed = closeWorkItem(
       claimed,
       "2026-07-12T14:00:00.000Z",
@@ -67,6 +137,7 @@ describe("work-item lifecycle", () => {
       closedAt: null,
       status: "open",
       updatedAt: "2026-07-12T15:00:00.000Z",
+      revision: 4,
     });
     expect(reopened.event.eventType).toBe("reopened");
   });
@@ -96,6 +167,7 @@ describe("work-item lifecycle", () => {
 
     expect(transition.item).toMatchObject({
       assignee: "agent-codex",
+      revision: 2,
       updatedAt: "2026-07-12T13:00:00.000Z",
     });
     expect(transition.item.title.toString()).toBe(
@@ -111,6 +183,7 @@ describe("work-item lifecycle", () => {
         title: "Implement complete lifecycle commands",
         type: "feature",
       },
+      revision: 2,
     });
   });
 

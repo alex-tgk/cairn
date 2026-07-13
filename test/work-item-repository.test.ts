@@ -11,6 +11,8 @@ import { CairnQueryDatabase } from "../src/storage/query-database.ts";
 import {
   claimWorkItem,
   createWorkItem,
+  updateWorkItem,
+  WorkItemConflictError,
   WorkItemId,
 } from "../src/work/work-item.ts";
 import { SqliteWorkItemRepository } from "../src/work/sqlite-work-item-repository.ts";
@@ -134,6 +136,50 @@ describe("SQLite work-item repository", () => {
     await queryDatabase.close();
   });
 
+  test("finds exact and project-local UUID-prefix references", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteWorkItemRepository(queryDatabase);
+    const first = createWorkItem({
+      id: WorkItemId.from("abcdef12-0000-7000-8000-000000000001"),
+      now: "2026-07-12T13:00:00.000Z",
+      projectId: PROJECT_ID,
+      title: "First prefix",
+    });
+    const second = createWorkItem({
+      id: WorkItemId.from("abcdef34-0000-7000-8000-000000000002"),
+      now: "2026-07-12T14:00:00.000Z",
+      projectId: PROJECT_ID,
+      title: "Second prefix",
+    });
+    const otherProject = createWorkItem({
+      id: WorkItemId.from("abcdef12-0000-7000-8000-000000000003"),
+      now: "2026-07-12T15:00:00.000Z",
+      projectId: OTHER_PROJECT_ID,
+      title: "Other project prefix",
+    });
+    for (const item of [first, second, otherProject]) {
+      await repository.create(item);
+    }
+
+    expect(
+      (await repository.findByReference(PROJECT_ID, first.id.toString())).map(
+        ({ id }) => id.toString(),
+      ),
+    ).toEqual([first.id.toString()]);
+    expect(
+      (await repository.findByReference(PROJECT_ID, "abcdef12")).map(
+        ({ id }) => id.toString(),
+      ),
+    ).toEqual([first.id.toString()]);
+    expect(
+      (await repository.findByReference(PROJECT_ID, "abcdef")).map(
+        ({ id }) => id.toString(),
+      ),
+    ).toEqual([first.id.toString(), second.id.toString()]);
+    await queryDatabase.close();
+  });
+
   test("persists lifecycle changes and returns their audit history", async () => {
     const database = createDatabase();
     const queryDatabase = new CairnQueryDatabase(database);
@@ -150,6 +196,9 @@ describe("SQLite work-item repository", () => {
       "agent-codex",
       "2026-07-12T14:00:00.000Z",
     );
+    if (!claimed) {
+      throw new Error("Expected claim transition");
+    }
 
     await repository.applyTransition(claimed);
 
@@ -163,6 +212,7 @@ describe("SQLite work-item repository", () => {
         eventType: "created",
         id: 1,
         payload: { priority: 2, status: "open", type: "task" },
+        revision: 1,
         workItemId: "work-lifecycle",
       },
       {
@@ -170,6 +220,7 @@ describe("SQLite work-item repository", () => {
         eventType: "claimed",
         id: 2,
         payload: { assignee: "agent-codex", status: "in_progress" },
+        revision: 2,
         workItemId: "work-lifecycle",
       },
     ]);
@@ -181,6 +232,69 @@ describe("SQLite work-item repository", () => {
         .get(item.id.toString()),
     ).toEqual({ tags: "task in_progress p2" });
     await queryDatabase.close();
+  });
+
+  test("rejects a stale transition without changing history or search", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "cairn-work-conflict-"));
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, "cairn.db");
+    const firstDatabase = openCairnDatabase(databasePath);
+    registerProjectWorkspace(firstDatabase, {
+      name: "Cairn",
+      now: "2026-07-12T12:00:00.000Z",
+      projectId: PROJECT_ID,
+      workspaceId: "018f4f32-95d6-7d6d-9f54-1d6d7a6d9a30",
+      workspacePath: "/projects/conflict",
+    });
+    const secondDatabase = openCairnDatabase(databasePath);
+    const firstQueries = new CairnQueryDatabase(firstDatabase);
+    const secondQueries = new CairnQueryDatabase(secondDatabase);
+    const firstRepository = new SqliteWorkItemRepository(firstQueries);
+    const secondRepository = new SqliteWorkItemRepository(secondQueries);
+    const item = createWorkItem({
+      id: WorkItemId.from("018f4f32-95d6-7d6d-9f54-1d6d7a6d9a31"),
+      now: "2026-07-12T13:00:00.000Z",
+      projectId: PROJECT_ID,
+      title: "Original title",
+    });
+    await firstRepository.create(item);
+    const firstRead = await firstRepository.findById(PROJECT_ID, item.id);
+    const secondRead = await secondRepository.findById(PROJECT_ID, item.id);
+    if (!firstRead || !secondRead) {
+      throw new Error("Expected work item on both connections");
+    }
+    const winner = updateWorkItem(
+      firstRead,
+      { title: "Winning title" },
+      "2026-07-12T14:00:00.000Z",
+    );
+    const loser = updateWorkItem(
+      secondRead,
+      { title: "Losing title" },
+      "2026-07-12T15:00:00.000Z",
+    );
+
+    await firstRepository.applyTransition(winner);
+    await expect(secondRepository.applyTransition(loser)).rejects.toBeInstanceOf(
+      WorkItemConflictError,
+    );
+
+    expect(await firstRepository.findById(PROJECT_ID, item.id)).toMatchObject({
+      revision: 2,
+    });
+    expect(
+      (await firstRepository.findById(PROJECT_ID, item.id))?.title.toString(),
+    ).toBe("Winning title");
+    expect(await firstRepository.listEvents(PROJECT_ID, item.id)).toHaveLength(2);
+    expect(
+      firstDatabase
+        .query<{ title: string }, [string]>(
+          "SELECT title FROM search_entries WHERE entity_id = ?",
+        )
+        .get(item.id.toString()),
+    ).toEqual({ title: "Winning title" });
+    await secondQueries.close();
+    await firstQueries.close();
   });
 
   test("rolls back item creation when its search projection conflicts", async () => {
