@@ -24,14 +24,19 @@ import {
   type WorkItemChanges,
 } from "./work/work-item.ts";
 import {
+  addWorkBlocker,
   claimWork,
   clearWorkParent,
   closeWork,
   createWork,
+  listBlockedWork,
+  listReadyWork,
   listWork,
+  listWorkDependencies,
   listWorkHistory,
   listWorkTree,
   reopenWork,
+  removeWorkBlocker,
   showWork,
   setWorkParent,
   updateWork,
@@ -55,6 +60,11 @@ Usage:
   cairn work reopen <id> [--if-revision <n>] [--path <path>] [--json]
   cairn work history <id> [--path <path>] [--json]
   cairn work tree [id] [--path <path>] [--json]
+  cairn work dep add <blocked-id> <blocker-id> [--if-revision <n>] [--path <path>] [--json]
+  cairn work dep remove <blocked-id> <blocker-id> [--if-revision <n>] [--path <path>] [--json]
+  cairn work dep list <id> [--direction <blockers|dependents>] [--path <path>] [--json]
+  cairn work ready [--explain] [--path <path>] [--json]
+  cairn work blocked [--path <path>] [--json]
   cairn work update <id> [--title <text>] [--description <text>]
                     [--priority <0-4>] [--type <type>]
                     [--assignee <name> | --clear-assignee]
@@ -184,6 +194,44 @@ function printWorkTree(
   }
 }
 
+function printDependencies(
+  dependencies: Awaited<ReturnType<typeof listWorkDependencies>>,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(dependencies, null, 2));
+    return;
+  }
+  if (dependencies.length === 0) {
+    console.log("No blocking dependencies.");
+    return;
+  }
+  for (const dependency of dependencies) {
+    console.log(
+      `${dependency.blockedShortId} blocked by ${dependency.blockerShortId}`,
+    );
+  }
+}
+
+function printReadiness(
+  items: Awaited<ReturnType<typeof listReadyWork>>,
+  json: boolean,
+  explain: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(items, null, 2));
+    return;
+  }
+  if (items.length === 0) {
+    console.log("No work items.");
+    return;
+  }
+  for (const item of items) {
+    const explanation = explain ? ` — ${item.reason}` : "";
+    console.log(`${item.shortId}: ${item.title}${explanation}`);
+  }
+}
+
 async function runWorkCommand(
   arguments_: readonly string[],
   json: boolean,
@@ -217,6 +265,66 @@ async function runWorkCommand(
   if (action === "list") {
     printWorkList(await listWork({ path }), json);
     return 0;
+  }
+
+  if (action === "ready") {
+    printReadiness(
+      await listReadyWork({ path }),
+      json,
+      hasFlag(arguments_, "--explain"),
+    );
+    return 0;
+  }
+
+  if (action === "blocked") {
+    printReadiness(await listBlockedWork({ path }), json, true);
+    return 0;
+  }
+
+  if (action === "dep") {
+    const operation = primary;
+    const id = arguments_[2] ?? "";
+    const blocker = arguments_[3] ?? "";
+    if (operation === "add") {
+      printResult(
+        await addWorkBlocker({
+          blocker,
+          expectedRevision: optionalRevision(arguments_),
+          id,
+          path,
+        }),
+        json,
+      );
+      return 0;
+    }
+    if (operation === "remove") {
+      printResult(
+        await removeWorkBlocker({
+          blocker,
+          expectedRevision: optionalRevision(arguments_),
+          id,
+          path,
+        }),
+        json,
+      );
+      return 0;
+    }
+    if (operation === "list") {
+      const direction = optionValue(arguments_, "--direction") ?? "blockers";
+      if (direction !== "blockers" && direction !== "dependents") {
+        throw new WorkItemValidationError(
+          "Dependency direction must be blockers or dependents",
+        );
+      }
+      printDependencies(
+        await listWorkDependencies({ direction, id, path }),
+        json,
+      );
+      return 0;
+    }
+    throw new WorkItemValidationError(
+      `Unknown dependency command: ${operation ?? ""}`,
+    );
   }
 
   if (action === "claim") {

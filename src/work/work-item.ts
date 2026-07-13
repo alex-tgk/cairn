@@ -15,7 +15,9 @@ export type WorkItemEventType =
   | "closed"
   | "reopened"
   | "parent_set"
-  | "parent_cleared";
+  | "parent_cleared"
+  | "dependency_added"
+  | "dependency_removed";
 export type WorkItemEventPayload = Readonly<
   Record<string, string | number | null>
 >;
@@ -64,8 +66,10 @@ export class WorkItemClaimConflictError extends Error {
 
 export type WorkItemRelationErrorCode =
   | "self_parent"
+  | "self_dependency"
   | "cross_project_relation"
-  | "hierarchy_cycle";
+  | "hierarchy_cycle"
+  | "dependency_cycle";
 
 export class WorkItemRelationError extends Error {
   override readonly name = "WorkItemRelationError";

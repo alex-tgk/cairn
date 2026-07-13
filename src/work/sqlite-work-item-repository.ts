@@ -26,7 +26,10 @@ import {
   type WorkItemTransition,
 } from "./work-item.ts";
 import type {
+  WorkDependency,
+  WorkDependencyDirection,
   WorkItemRepository,
+  WorkReadiness,
   WorkTreeNode,
 } from "./work-item-repository.ts";
 
@@ -36,6 +39,12 @@ type WorkTreeRow = WorkItemRow &
   Readonly<{
     depth: number;
     parent_id: string | null;
+  }>;
+type WorkDependencyRow = WorkItemRow &
+  Readonly<{
+    blocked_id: string;
+    blocker_id: string;
+    dependency_created_at: string;
   }>;
 
 function mapWorkItem(row: WorkItemRow): WorkItem {
@@ -133,6 +142,179 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
       }
       await this.applyTransitionInTransaction(database, transition);
     });
+  }
+
+  async addBlocker(
+    projectId: string,
+    blockedId: WorkItemId,
+    blockerId: WorkItemId,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    return await this.database.immediateTransaction(async (database) => {
+      if (blockedId.toString() === blockerId.toString()) {
+        throw new WorkItemRelationError(
+          "self_dependency",
+          blockedId.toString(),
+          blockerId.toString(),
+        );
+      }
+      const blocked = await this.requireItemRevision(
+        database,
+        projectId,
+        blockedId,
+        expectedRevision,
+      );
+      await this.requireRelatedItem(database, projectId, blockerId);
+      const existing = await database
+        .selectFrom("work_item_dependencies")
+        .select("blocked_id")
+        .where("project_id", "=", projectId)
+        .where("blocked_id", "=", blockedId.toString())
+        .where("blocker_id", "=", blockerId.toString())
+        .executeTakeFirst();
+      if (existing) {
+        return blocked;
+      }
+      await this.requireNoDependencyCycle(
+        database,
+        projectId,
+        blockedId,
+        blockerId,
+      );
+      await database
+        .insertInto("work_item_dependencies")
+        .values({
+          blocked_id: blockedId.toString(),
+          blocker_id: blockerId.toString(),
+          created_at: now,
+          project_id: projectId,
+        })
+        .execute();
+      const transition = createWorkItemTransition(
+        blocked,
+        "dependency_added",
+        { blockerId: blockerId.toString() },
+        now,
+      );
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async removeBlocker(
+    projectId: string,
+    blockedId: WorkItemId,
+    blockerId: WorkItemId,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    return await this.database.immediateTransaction(async (database) => {
+      if (blockedId.toString() === blockerId.toString()) {
+        throw new WorkItemRelationError(
+          "self_dependency",
+          blockedId.toString(),
+          blockerId.toString(),
+        );
+      }
+      const blocked = await this.requireItemRevision(
+        database,
+        projectId,
+        blockedId,
+        expectedRevision,
+      );
+      await this.requireRelatedItem(database, projectId, blockerId);
+      const result = await database
+        .deleteFrom("work_item_dependencies")
+        .where("project_id", "=", projectId)
+        .where("blocked_id", "=", blockedId.toString())
+        .where("blocker_id", "=", blockerId.toString())
+        .executeTakeFirst();
+      if (result.numDeletedRows === 0n) {
+        return blocked;
+      }
+      const transition = createWorkItemTransition(
+        blocked,
+        "dependency_removed",
+        { blockerId: blockerId.toString() },
+        now,
+      );
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async listDependencies(
+    projectId: string,
+    id: WorkItemId,
+    direction: WorkDependencyDirection,
+  ): Promise<readonly WorkDependency[]> {
+    const relatedColumn = direction === "blockers" ? "blocker_id" : "blocked_id";
+    const matchColumn = direction === "blockers" ? "blocked_id" : "blocker_id";
+    const rows = await sql<WorkDependencyRow>`
+      SELECT related.*, dependency.blocked_id, dependency.blocker_id,
+             dependency.created_at AS dependency_created_at
+      FROM work_item_dependencies AS dependency
+      INNER JOIN work_items AS related
+        ON related.project_id = dependency.project_id
+       AND related.id = dependency.${sql.ref(relatedColumn)}
+      WHERE dependency.project_id = ${projectId}
+        AND dependency.${sql.ref(matchColumn)} = ${id.toString()}
+      ORDER BY related.priority ASC, related.created_at ASC, related.id ASC
+    `.execute(this.database.queries);
+    return rows.rows.map((row) => ({
+      blockedId: WorkItemId.from(row.blocked_id),
+      blockerId: WorkItemId.from(row.blocker_id),
+      createdAt: row.dependency_created_at,
+      relatedItem: mapWorkItem(row),
+    }));
+  }
+
+  async listReady(projectId: string): Promise<readonly WorkReadiness[]> {
+    const rows = await sql<WorkItemRow>`
+      SELECT item.*
+      FROM work_items AS item
+      WHERE item.project_id = ${projectId}
+        AND item.status = 'open'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM work_item_dependencies AS dependency
+          INNER JOIN work_items AS blocker
+            ON blocker.project_id = dependency.project_id
+           AND blocker.id = dependency.blocker_id
+          WHERE dependency.project_id = item.project_id
+            AND dependency.blocked_id = item.id
+            AND blocker.status <> 'closed'
+        )
+      ORDER BY item.priority ASC, item.created_at ASC, item.id ASC
+    `.execute(this.database.queries);
+    return rows.rows.map((row) => ({ blockers: [], item: mapWorkItem(row) }));
+  }
+
+  async listBlocked(projectId: string): Promise<readonly WorkReadiness[]> {
+    const rows = await sql<WorkItemRow>`
+      SELECT item.*
+      FROM work_items AS item
+      WHERE item.project_id = ${projectId}
+        AND item.status <> 'closed'
+        AND EXISTS (
+          SELECT 1
+          FROM work_item_dependencies AS dependency
+          INNER JOIN work_items AS blocker
+            ON blocker.project_id = dependency.project_id
+           AND blocker.id = dependency.blocker_id
+          WHERE dependency.project_id = item.project_id
+            AND dependency.blocked_id = item.id
+            AND blocker.status <> 'closed'
+        )
+      ORDER BY item.priority ASC, item.created_at ASC, item.id ASC
+    `.execute(this.database.queries);
+    return await Promise.all(
+      rows.rows.map(async (row) => ({
+        blockers: await this.listActiveBlockers(projectId, WorkItemId.from(row.id)),
+        item: mapWorkItem(row),
+      })),
+    );
   }
 
   async setParent(
@@ -570,6 +752,59 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
         parentId.toString(),
       );
     }
+  }
+
+  private async requireNoDependencyCycle(
+    database: Kysely<CairnDatabaseSchema>,
+    projectId: string,
+    blockedId: WorkItemId,
+    blockerId: WorkItemId,
+  ): Promise<void> {
+    const cycle = await sql<{ id: string }>`
+      WITH RECURSIVE blockers(id) AS (
+        SELECT dependency.blocker_id
+        FROM work_item_dependencies AS dependency
+        WHERE dependency.project_id = ${projectId}
+          AND dependency.blocked_id = ${blockerId.toString()}
+
+        UNION
+
+        SELECT dependency.blocker_id
+        FROM work_item_dependencies AS dependency
+        INNER JOIN blockers ON blockers.id = dependency.blocked_id
+        WHERE dependency.project_id = ${projectId}
+      )
+      SELECT id FROM blockers WHERE id = ${blockedId.toString()} LIMIT 1
+    `.execute(database);
+    if (cycle.rows.length > 0) {
+      throw new WorkItemRelationError(
+        "dependency_cycle",
+        blockedId.toString(),
+        blockerId.toString(),
+      );
+    }
+  }
+
+  private async listActiveBlockers(
+    projectId: string,
+    blockedId: WorkItemId,
+  ): Promise<readonly WorkItem[]> {
+    const rows = await this.database.queries
+      .selectFrom("work_item_dependencies as dependency")
+      .innerJoin("work_items as blocker", (join) =>
+        join
+          .onRef("blocker.project_id", "=", "dependency.project_id")
+          .onRef("blocker.id", "=", "dependency.blocker_id"),
+      )
+      .selectAll("blocker")
+      .where("dependency.project_id", "=", projectId)
+      .where("dependency.blocked_id", "=", blockedId.toString())
+      .where("blocker.status", "!=", "closed")
+      .orderBy("blocker.priority", "asc")
+      .orderBy("blocker.created_at", "asc")
+      .orderBy("blocker.id", "asc")
+      .execute();
+    return rows.map(mapWorkItem);
   }
 
   private async requireNoOpenDescendants(

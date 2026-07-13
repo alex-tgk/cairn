@@ -46,8 +46,8 @@ Current progress:
 - [x] Creation audit event and unified-search projection
 - [x] Claim, close, and reopen with audit history
 - [x] Work-item metadata updates with audit history
-- [ ] Arbitrary-depth single-parent hierarchy and separate blocking dependencies
-- [ ] Ready and blocked explanations
+- [x] Arbitrary-depth single-parent hierarchy and separate blocking dependencies
+- [x] Ready and blocked explanations
 - [ ] Labels, comments, and notes
 
 ## Slice 3: durable memory

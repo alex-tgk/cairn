@@ -20,6 +20,7 @@ import {
   type WorkItemType,
 } from "./work-item.ts";
 import type { WorkItemRepository } from "./work-item-repository.ts";
+import type { WorkDependencyDirection } from "./work-item-repository.ts";
 
 export type WorkItemView = Readonly<{
   assignee: string | null;
@@ -44,6 +45,27 @@ export type WorkTreeNodeView = WorkItemView &
     depth: number;
     parentId: string | null;
     parentShortId: string | null;
+  }>;
+
+export type WorkDependencyView = Readonly<{
+  blockedId: string;
+  blockedShortId: string;
+  blockerId: string;
+  blockerShortId: string;
+  createdAt: string;
+  relatedItem: WorkItemView;
+}>;
+
+export type WorkReadinessView = WorkItemView &
+  Readonly<{
+    blockers: readonly Readonly<{
+      id: string;
+      shortId: string;
+      status: WorkItemStatus;
+      title: string;
+    }>[];
+    readiness: "ready" | "blocked";
+    reason: string;
   }>;
 
 type WorkContextOptions = Readonly<{
@@ -76,6 +98,10 @@ type ParentWorkOptions = TransitionWorkOptions &
   Readonly<{ parent?: string | undefined }>;
 type TreeWorkOptions = WorkContextOptions &
   Readonly<{ root?: string | undefined }>;
+type BlockerWorkOptions = TransitionWorkOptions &
+  Readonly<{ blocker: string }>;
+type DependencyListOptions = ShowWorkOptions &
+  Readonly<{ direction: WorkDependencyDirection }>;
 
 export class WorkItemNotFoundError extends Error {
   readonly code = "work_not_found";
@@ -283,6 +309,109 @@ export async function listWorkTree(
       },
     );
   });
+}
+
+export async function addWorkBlocker(
+  options: BlockerWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const blocked = await requireWorkItem(repository, projectId, options.id);
+    const blocker = await requireWorkItem(repository, projectId, options.blocker);
+    requireExpectedRevision(blocked, options.expectedRevision);
+    return toWorkItemView(
+      await repository.addBlocker(
+        projectId,
+        blocked.id,
+        blocker.id,
+        blocked.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function removeWorkBlocker(
+  options: BlockerWorkOptions,
+): Promise<WorkItemView> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const blocked = await requireWorkItem(repository, projectId, options.id);
+    const blocker = await requireWorkItem(repository, projectId, options.blocker);
+    requireExpectedRevision(blocked, options.expectedRevision);
+    return toWorkItemView(
+      await repository.removeBlocker(
+        projectId,
+        blocked.id,
+        blocker.id,
+        blocked.revision,
+        (options.now ?? (() => new Date().toISOString()))(),
+      ),
+    );
+  });
+}
+
+export async function listWorkDependencies(
+  options: DependencyListOptions,
+): Promise<readonly WorkDependencyView[]> {
+  return withWorkRepository(options, async (repository, projectId) => {
+    const item = await requireWorkItem(repository, projectId, options.id);
+    return (
+      await repository.listDependencies(projectId, item.id, options.direction)
+    ).map(({ blockedId, blockerId, createdAt, relatedItem }) => {
+      const blocked = blockedId.toString();
+      const blocker = blockerId.toString();
+      return {
+        blockedId: blocked,
+        blockedShortId: blocked.replaceAll("-", "").slice(0, 8),
+        blockerId: blocker,
+        blockerShortId: blocker.replaceAll("-", "").slice(0, 8),
+        createdAt,
+        relatedItem: toWorkItemView(relatedItem),
+      };
+    });
+  });
+}
+
+function toReadinessView(
+  readiness: "ready" | "blocked",
+  item: WorkItem,
+  blockers: readonly WorkItem[],
+): WorkReadinessView {
+  return {
+    ...toWorkItemView(item),
+    blockers: blockers.map((blocker) => {
+      const id = blocker.id.toString();
+      return {
+        id,
+        shortId: id.replaceAll("-", "").slice(0, 8),
+        status: blocker.status,
+        title: blocker.title.toString(),
+      };
+    }),
+    readiness,
+    reason: readiness === "ready"
+      ? "Open with no active blockers"
+      : `Blocked by ${blockers.length} active blocker${blockers.length === 1 ? "" : "s"}`,
+  };
+}
+
+export async function listReadyWork(
+  options: WorkContextOptions,
+): Promise<readonly WorkReadinessView[]> {
+  return withWorkRepository(options, async (repository, projectId) =>
+    (await repository.listReady(projectId)).map(({ blockers, item }) =>
+      toReadinessView("ready", item, blockers),
+    ),
+  );
+}
+
+export async function listBlockedWork(
+  options: WorkContextOptions,
+): Promise<readonly WorkReadinessView[]> {
+  return withWorkRepository(options, async (repository, projectId) =>
+    (await repository.listBlocked(projectId)).map(({ blockers, item }) =>
+      toReadinessView("blocked", item, blockers),
+    ),
+  );
 }
 
 export async function showWork(
