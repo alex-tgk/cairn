@@ -98,6 +98,64 @@ export type WorkItemCommentTable = Readonly<{
   work_item_id: string;
 }>;
 
+export type ContextSourceTable = Readonly<{
+  config_hash: string;
+  created_at: string;
+  exclude_json: string;
+  id: string;
+  include_json: string;
+  kind: string;
+  max_file_bytes: number;
+  name: string;
+  project_id: string;
+  root_relative_path: string;
+  updated_at: string;
+}>;
+
+export type ContextDocumentTable = Readonly<{
+  active: 0 | 1;
+  byte_size: number;
+  content_hash: string;
+  first_indexed_at: string;
+  id: string;
+  kind: string;
+  last_seen_at: string;
+  project_id: string;
+  relative_path: string;
+  source_id: string;
+  tags_json: string;
+  title: string;
+  updated_at: string;
+  workspace_id: string;
+}>;
+
+export type ContextDocumentVersionTable = Readonly<{
+  byte_size: number;
+  content: string;
+  content_hash: string;
+  document_id: string;
+  id: Generated<number>;
+  indexed_at: string;
+}>;
+
+export type ContextIndexRunTable = Readonly<{
+  added_count: number;
+  completed_at: string | null;
+  discovered_count: number;
+  error_count: number;
+  error_json: string;
+  id: string;
+  mode: "refresh" | "rebuild";
+  removed_count: number;
+  skipped_count: number;
+  source_id: string;
+  started_at: string;
+  status: "running" | "succeeded" | "failed" | "partial";
+  unchanged_count: number;
+  updated_count: number;
+  workspace_id: string;
+}>;
+
 export type SchemaMigrationTable = Readonly<{
   applied_at: string;
   name: string;
@@ -105,6 +163,10 @@ export type SchemaMigrationTable = Readonly<{
 }>;
 
 export interface CairnDatabaseSchema {
+  context_document_versions: ContextDocumentVersionTable;
+  context_documents: ContextDocumentTable;
+  context_index_runs: ContextIndexRunTable;
+  context_sources: ContextSourceTable;
   projects: ProjectTable;
   schema_migrations: SchemaMigrationTable;
   search_entries: SearchEntryTable;

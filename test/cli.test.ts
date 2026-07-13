@@ -80,7 +80,7 @@ describe("Cairn CLI", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 3,
+      schemaVersion: 4,
     });
   });
 
