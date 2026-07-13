@@ -423,6 +423,90 @@ describe("Cairn CLI", () => {
     });
   });
 
+  test("creates and updates hierarchy with deterministic tree output", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+    const root = JSON.parse(
+      runCli(
+        ["work", "create", "Root", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string; shortId: string };
+    const child = JSON.parse(
+      runCli(
+        [
+          "work",
+          "create",
+          "Child",
+          "--parent",
+          root.shortId,
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string; shortId: string };
+
+    const tree = runCli(
+      ["work", "tree", root.shortId, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(JSON.parse(tree.stdout)).toMatchObject([
+      { depth: 0, id: root.id, parentId: null },
+      { depth: 1, id: child.id, parentId: root.id },
+    ]);
+
+    const cleared = runCli(
+      [
+        "work",
+        "update",
+        child.shortId,
+        "--clear-parent",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    expect(JSON.parse(cleared.stdout)).toMatchObject({ revision: 2 });
+    expect(
+      JSON.parse(
+        runCli(
+          ["work", "tree", root.shortId, "--path", workspace, "--json"],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toHaveLength(1);
+
+    runCli(
+      [
+        "work",
+        "update",
+        child.shortId,
+        "--parent",
+        root.shortId,
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    const closeRoot = runCli(
+      ["work", "close", root.shortId, "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(closeRoot.exitCode).toBe(1);
+    expect(JSON.parse(closeRoot.stderr)).toMatchObject({
+      error: {
+        code: "open_descendants",
+        details: { descendants: [child.id] },
+      },
+    });
+  });
+
   test("returns a non-zero result outside a Cairn project", () => {
     const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
     const workspace = createTemporaryDirectory("cairn-cli-workspace-");

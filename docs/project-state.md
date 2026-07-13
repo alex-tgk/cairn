@@ -11,7 +11,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 53 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 58 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -40,11 +40,13 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   and project-local unambiguous UUID-prefix references
 - Structured JSON errors for work conflicts, claim conflicts, ambiguous references,
   validation failures, and missing work
+- Arbitrary-depth parent assignment, deterministic recursive tree queries,
+  transactional cycle checks, and open-descendant closure protection
 
 ## Not implemented
 
-- Dependency and hierarchy commands, ready/blocked queries, comments, labels, or
-  note commands
+- Blocking dependency and ready/blocked commands, comments, labels, or note
+  commands
 - Durable memory, sessions, topics, relations, or timelines
 - Context source discovery, incremental indexing, or user-facing search
 - Beads and Engram import
@@ -55,7 +57,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 
 Continue essential work tracking:
 
-1. Parent/child and blocking dependencies
+1. Blocking dependencies
 2. Ready and blocked queries with explanations
 3. Labels, comments, and notes
 4. Stable human and JSON CLI contracts
