@@ -44,6 +44,11 @@ bun run build
 ./dist/cairn work claim <work-item-id> --assignee agent-name
 ./dist/cairn work close <work-item-id>
 ./dist/cairn work history <work-item-id>
+./dist/cairn work label add <work-item-id> <label>
+./dist/cairn work label list <work-item-id>
+./dist/cairn work note append <work-item-id> "Root cause identified"
+./dist/cairn work comment add <work-item-id> <author> "Looks good to me"
+./dist/cairn work comment list <work-item-id>
 ./dist/cairn doctor
 ```
 
@@ -73,7 +78,7 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | Work capture, editing, listing, lifecycle, and history | Implemented |
 | Arbitrary-depth, single-parent work hierarchy | Implemented |
 | Blocking dependencies and ready/blocked explanations | Implemented |
-| Comments, labels, and notes | Planned |
+| Comments, labels, and notes | Implemented |
 | Durable memory | Planned |
 | Local context indexing and unified search | Planned |
 | Beads and Engram migration | Planned |

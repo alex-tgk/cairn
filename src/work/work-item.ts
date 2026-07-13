@@ -17,7 +17,11 @@ export type WorkItemEventType =
   | "parent_set"
   | "parent_cleared"
   | "dependency_added"
-  | "dependency_removed";
+  | "dependency_removed"
+  | "label_added"
+  | "label_removed"
+  | "note_appended"
+  | "comment_added";
 export type WorkItemEventPayload = Readonly<
   Record<string, string | number | null>
 >;
@@ -142,6 +146,34 @@ export class WorkItemPriority {
   toNumber(): number {
     return this.value;
   }
+}
+
+export function normalizeWorkItemLabel(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) {
+    throw new WorkItemValidationError("Work item label must not be empty");
+  }
+  return normalized;
+}
+
+export function normalizeWorkItemCommentAuthor(value: string): string {
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    throw new WorkItemValidationError(
+      "Work item comment author must not be empty",
+    );
+  }
+  return normalized;
+}
+
+export function normalizeWorkItemCommentBody(value: string): string {
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    throw new WorkItemValidationError(
+      "Work item comment body must not be empty",
+    );
+  }
+  return normalized;
 }
 
 export function parseWorkItemType(value: string): WorkItemType {
@@ -403,4 +435,21 @@ export function updateWorkItem(
     expectedRevision: item.revision,
     item: { ...updated, revision, updatedAt: now },
   };
+}
+
+export function appendWorkItemNote(
+  item: WorkItem,
+  note: string,
+  now: string,
+): WorkItemTransition {
+  const normalized = note.trim();
+  if (normalized.length === 0) {
+    throw new WorkItemValidationError("Work item note must not be empty");
+  }
+  const notes = item.notes.length === 0
+    ? normalized
+    : `${item.notes}\n${normalized}`;
+  return createWorkItemTransition(item, "note_appended", { note: normalized }, now, {
+    notes,
+  });
 }

@@ -13,6 +13,28 @@ export interface WorkItemRepository {
     expectedRevision: number,
     now: string,
   ): Promise<WorkItem>;
+  addComment(
+    projectId: string,
+    id: WorkItemId,
+    author: string,
+    body: string,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem>;
+  addLabel(
+    projectId: string,
+    id: WorkItemId,
+    label: string,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem>;
+  appendNote(
+    projectId: string,
+    id: WorkItemId,
+    note: string,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem>;
   applyTransition(transition: WorkItemTransition): Promise<void>;
   clearParent(
     projectId: string,
@@ -32,16 +54,28 @@ export interface WorkItemRepository {
   ): Promise<readonly WorkItemEvent[]>;
   listByProject(projectId: string): Promise<readonly WorkItem[]>;
   listBlocked(projectId: string): Promise<readonly WorkReadiness[]>;
+  listComments(
+    projectId: string,
+    id: WorkItemId,
+  ): Promise<readonly WorkItemComment[]>;
   listDependencies(
     projectId: string,
     id: WorkItemId,
     direction: WorkDependencyDirection,
   ): Promise<readonly WorkDependency[]>;
+  listLabels(projectId: string, id: WorkItemId): Promise<readonly string[]>;
   listReady(projectId: string): Promise<readonly WorkReadiness[]>;
   listTree(
     projectId: string,
     rootId?: WorkItemId,
   ): Promise<readonly WorkTreeNode[]>;
+  removeLabel(
+    projectId: string,
+    id: WorkItemId,
+    label: string,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem>;
   setParent(
     projectId: string,
     childId: WorkItemId,
@@ -57,6 +91,15 @@ export interface WorkItemRepository {
     now: string,
   ): Promise<WorkItem>;
 }
+
+export type WorkItemComment = Readonly<{
+  author: string;
+  body: string;
+  createdAt: string;
+  id: number;
+  revision: number;
+  workItemId: string;
+}>;
 
 export type WorkDependencyDirection = "blockers" | "dependents";
 

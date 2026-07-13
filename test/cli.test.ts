@@ -588,6 +588,89 @@ describe("Cairn CLI", () => {
     ]);
   });
 
+  test("manages labels, notes, and comments", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+    const item = JSON.parse(
+      runCli(
+        ["work", "create", "Investigate outage", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string; shortId: string };
+
+    const added = runCli(
+      ["work", "label", "add", item.shortId, "Urgent", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(JSON.parse(added.stdout)).toMatchObject({ id: item.id, revision: 2 });
+    runCli(
+      ["work", "label", "add", item.shortId, "backend", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(
+      JSON.parse(
+        runCli(
+          ["work", "label", "list", item.shortId, "--path", workspace, "--json"],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toEqual(["backend", "urgent"]);
+    runCli(
+      ["work", "label", "remove", item.shortId, "urgent", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(
+      JSON.parse(
+        runCli(
+          ["work", "label", "list", item.shortId, "--path", workspace, "--json"],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toEqual(["backend"]);
+
+    const noted = runCli(
+      [
+        "work",
+        "note",
+        "append",
+        item.shortId,
+        "Root cause identified",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    expect(JSON.parse(noted.stdout)).toMatchObject({
+      notes: "Root cause identified",
+    });
+
+    runCli(
+      [
+        "work",
+        "comment",
+        "add",
+        item.shortId,
+        "agent-codex",
+        "Looks good to me",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    expect(
+      JSON.parse(
+        runCli(
+          ["work", "comment", "list", item.shortId, "--path", workspace, "--json"],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toMatchObject([{ author: "agent-codex", body: "Looks good to me" }]);
+  });
+
   test("returns a non-zero result outside a Cairn project", () => {
     const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
     const workspace = createTemporaryDirectory("cairn-cli-workspace-");

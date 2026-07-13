@@ -48,7 +48,9 @@ Current progress:
 - [x] Work-item metadata updates with audit history
 - [x] Arbitrary-depth single-parent hierarchy and separate blocking dependencies
 - [x] Ready and blocked explanations
-- [ ] Labels, comments, and notes
+- [x] Labels, comments, and notes
+- [ ] List, ready, and blocked filtering by status, priority, type, assignee,
+      label, and parent
 
 ## Slice 3: durable memory
 

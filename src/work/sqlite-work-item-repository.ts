@@ -12,7 +12,11 @@ import {
 } from "../storage/query-database.ts";
 import {
   restoreWorkItem,
+  appendWorkItemNote,
   createWorkItemTransition,
+  normalizeWorkItemCommentAuthor,
+  normalizeWorkItemCommentBody,
+  normalizeWorkItemLabel,
   WorkItemConflictError,
   WorkItemId,
   WorkItemOpenDescendantsError,
@@ -28,6 +32,7 @@ import {
 import type {
   WorkDependency,
   WorkDependencyDirection,
+  WorkItemComment,
   WorkItemRepository,
   WorkReadiness,
   WorkTreeNode,
@@ -93,8 +98,9 @@ function mapWorkItemEvent(row: WorkItemEventRow): WorkItemEvent {
   };
 }
 
-function searchTags(item: WorkItem): string {
-  return `${item.type} ${item.status} p${item.priority.toNumber()}`;
+function searchTags(item: WorkItem, labels: readonly string[]): string {
+  const base = `${item.type} ${item.status} p${item.priority.toNumber()}`;
+  return labels.length === 0 ? base : `${base} ${labels.join(" ")}`;
 }
 
 function searchBody(item: WorkItem): string {
@@ -267,6 +273,174 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
       blockerId: WorkItemId.from(row.blocker_id),
       createdAt: row.dependency_created_at,
       relatedItem: mapWorkItem(row),
+    }));
+  }
+
+  async addLabel(
+    projectId: string,
+    id: WorkItemId,
+    label: string,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    const normalized = normalizeWorkItemLabel(label);
+    return await this.database.immediateTransaction(async (database) => {
+      const item = await this.requireItemRevision(
+        database,
+        projectId,
+        id,
+        expectedRevision,
+      );
+      const existing = await database
+        .selectFrom("work_item_labels")
+        .select("label")
+        .where("project_id", "=", projectId)
+        .where("work_item_id", "=", id.toString())
+        .where("label", "=", normalized)
+        .executeTakeFirst();
+      if (existing) {
+        return item;
+      }
+      await database
+        .insertInto("work_item_labels")
+        .values({
+          created_at: now,
+          label: normalized,
+          project_id: projectId,
+          work_item_id: id.toString(),
+        })
+        .execute();
+      const transition = createWorkItemTransition(
+        item,
+        "label_added",
+        { label: normalized },
+        now,
+      );
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async removeLabel(
+    projectId: string,
+    id: WorkItemId,
+    label: string,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    const normalized = normalizeWorkItemLabel(label);
+    return await this.database.immediateTransaction(async (database) => {
+      const item = await this.requireItemRevision(
+        database,
+        projectId,
+        id,
+        expectedRevision,
+      );
+      const result = await database
+        .deleteFrom("work_item_labels")
+        .where("project_id", "=", projectId)
+        .where("work_item_id", "=", id.toString())
+        .where("label", "=", normalized)
+        .executeTakeFirst();
+      if (result.numDeletedRows === 0n) {
+        return item;
+      }
+      const transition = createWorkItemTransition(
+        item,
+        "label_removed",
+        { label: normalized },
+        now,
+      );
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async listLabels(
+    projectId: string,
+    id: WorkItemId,
+  ): Promise<readonly string[]> {
+    return await this.currentLabels(this.database.queries, projectId, id);
+  }
+
+  async appendNote(
+    projectId: string,
+    id: WorkItemId,
+    note: string,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    return await this.database.immediateTransaction(async (database) => {
+      const item = await this.requireItemRevision(
+        database,
+        projectId,
+        id,
+        expectedRevision,
+      );
+      const transition = appendWorkItemNote(item, note, now);
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async addComment(
+    projectId: string,
+    id: WorkItemId,
+    author: string,
+    body: string,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WorkItem> {
+    const normalizedAuthor = normalizeWorkItemCommentAuthor(author);
+    const normalizedBody = normalizeWorkItemCommentBody(body);
+    return await this.database.immediateTransaction(async (database) => {
+      const item = await this.requireItemRevision(
+        database,
+        projectId,
+        id,
+        expectedRevision,
+      );
+      const transition = createWorkItemTransition(
+        item,
+        "comment_added",
+        { author: normalizedAuthor },
+        now,
+      );
+      await database
+        .insertInto("work_item_comments")
+        .values({
+          author: normalizedAuthor,
+          body: normalizedBody,
+          created_at: now,
+          project_id: projectId,
+          revision: transition.item.revision,
+          work_item_id: id.toString(),
+        })
+        .execute();
+      await this.applyTransitionInTransaction(database, transition);
+      return transition.item;
+    });
+  }
+
+  async listComments(
+    projectId: string,
+    id: WorkItemId,
+  ): Promise<readonly WorkItemComment[]> {
+    const rows = await this.database.queries
+      .selectFrom("work_item_comments")
+      .select(["id", "author", "body", "created_at", "revision"])
+      .where("project_id", "=", projectId)
+      .where("work_item_id", "=", id.toString())
+      .orderBy("created_at", "asc")
+      .orderBy("id", "asc")
+      .execute();
+    return rows.map((row) => ({
+      author: row.author,
+      body: row.body,
+      createdAt: row.created_at,
+      id: row.id,
+      revision: row.revision,
+      workItemId: id.toString(),
     }));
   }
 
@@ -594,7 +768,7 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
         entity_kind: "work_item",
         project_id: item.projectId,
         source_path: null,
-        tags: searchTags(item),
+        tags: searchTags(item, []),
         title: item.title.toString(),
         updated_at: item.updatedAt,
         workspace_id: null,
@@ -871,11 +1045,12 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
     database: Kysely<CairnDatabaseSchema>,
     item: WorkItem,
   ): Promise<void> {
+    const labels = await this.currentLabels(database, item.projectId, item.id);
     const result = await database
       .updateTable("search_entries")
       .set({
         body: searchBody(item),
-        tags: searchTags(item),
+        tags: searchTags(item, labels),
         title: item.title.toString(),
         updated_at: item.updatedAt,
       })
@@ -888,5 +1063,20 @@ export class SqliteWorkItemRepository implements WorkItemRepository {
         `Work-item search projection not found: ${item.id.toString()}`,
       );
     }
+  }
+
+  private async currentLabels(
+    database: Kysely<CairnDatabaseSchema>,
+    projectId: string,
+    id: WorkItemId,
+  ): Promise<readonly string[]> {
+    const rows = await database
+      .selectFrom("work_item_labels")
+      .select(["label"])
+      .where("project_id", "=", projectId)
+      .where("work_item_id", "=", id.toString())
+      .orderBy("label", "asc")
+      .execute();
+    return rows.map((row) => row.label);
   }
 }
