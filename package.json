@@ -39,7 +39,6 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "kysely": "0.28.17",
-    "kysely-bun-sqlite": "0.4.0"
+    "kysely": "0.28.17"
   }
 }

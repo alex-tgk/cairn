@@ -4,13 +4,13 @@ import {
   Kysely,
   sql,
 } from "kysely";
-import { BunSqliteDialect } from "kysely-bun-sqlite";
 
 import type {
   WorkItemEventType,
   WorkItemStatus,
   WorkItemType,
 } from "../work/work-item.ts";
+import { BunSqliteDialect } from "./bun-sqlite-dialect.ts";
 
 export type ProjectTable = Readonly<{
   created_at: string;
