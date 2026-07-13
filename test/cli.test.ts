@@ -671,6 +671,144 @@ describe("Cairn CLI", () => {
     ).toMatchObject([{ author: "agent-codex", body: "Looks good to me" }]);
   });
 
+  test("filters work list, ready, and blocked results", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+    const bug = JSON.parse(
+      runCli(
+        [
+          "work",
+          "create",
+          "Fix crash",
+          "--type",
+          "bug",
+          "--assignee",
+          "agent-codex",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string; shortId: string };
+    const feature = JSON.parse(
+      runCli(
+        [
+          "work",
+          "create",
+          "Ship feature",
+          "--type",
+          "feature",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string; shortId: string };
+    runCli(
+      [
+        "work",
+        "label",
+        "add",
+        feature.shortId,
+        "urgent",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    runCli(
+      [
+        "work",
+        "dep",
+        "add",
+        feature.shortId,
+        bug.shortId,
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+
+    expect(
+      JSON.parse(
+        runCli(
+          ["work", "list", "--type", "bug", "--path", workspace, "--json"],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toMatchObject([{ id: bug.id }]);
+    expect(
+      JSON.parse(
+        runCli(
+          [
+            "work",
+            "list",
+            "--assignee",
+            "agent-codex",
+            "--path",
+            workspace,
+            "--json",
+          ],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toMatchObject([{ id: bug.id }]);
+    expect(
+      JSON.parse(
+        runCli(
+          [
+            "work",
+            "list",
+            "--label",
+            "urgent",
+            "--path",
+            workspace,
+            "--json",
+          ],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toMatchObject([{ id: feature.id }]);
+    expect(
+      JSON.parse(
+        runCli(
+          ["work", "ready", "--type", "bug", "--path", workspace, "--json"],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toMatchObject([{ id: bug.id }]);
+    expect(
+      JSON.parse(
+        runCli(
+          [
+            "work",
+            "blocked",
+            "--type",
+            "feature",
+            "--path",
+            workspace,
+            "--json",
+          ],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toMatchObject([{ id: feature.id }]);
+    expect(
+      JSON.parse(
+        runCli(
+          ["work", "list", "--limit", "1", "--path", workspace, "--json"],
+          dataDirectory,
+        ).stdout,
+      ),
+    ).toHaveLength(1);
+  });
+
   test("returns a non-zero result outside a Cairn project", () => {
     const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
     const workspace = createTemporaryDirectory("cairn-cli-workspace-");

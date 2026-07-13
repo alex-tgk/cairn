@@ -14,6 +14,7 @@ import {
   openCairnDatabase,
 } from "./storage/database.ts";
 import {
+  parseWorkItemStatus,
   parseWorkItemType,
   WorkItemClaimConflictError,
   WorkItemConflictError,
@@ -60,7 +61,10 @@ Usage:
                     [--type <type>] [--assignee <name>] [--parent <id>]
                     [--path <path>] [--json]
   cairn work show <id> [--path <path>] [--json]
-  cairn work list [--path <path>] [--json]
+  cairn work list [--status <status>] [--priority <0-4>] [--type <type>]
+                  [--assignee <name> | --unassigned]
+                  [--label <label> ...] [--parent <id> | --root]
+                  [--limit <n>] [--path <path>] [--json]
   cairn work claim <id> --assignee <name> [--if-revision <n>] [--path <path>] [--json]
   cairn work close <id> [--if-revision <n>] [--path <path>] [--json]
   cairn work reopen <id> [--if-revision <n>] [--path <path>] [--json]
@@ -75,8 +79,14 @@ Usage:
   cairn work note append <id> <text> [--if-revision <n>] [--path <path>] [--json]
   cairn work comment add <id> <author> <body> [--if-revision <n>] [--path <path>] [--json]
   cairn work comment list <id> [--path <path>] [--json]
-  cairn work ready [--explain] [--path <path>] [--json]
-  cairn work blocked [--path <path>] [--json]
+  cairn work ready [--explain] [--status <status>] [--priority <0-4>]
+                   [--type <type>] [--assignee <name> | --unassigned]
+                   [--label <label> ...] [--parent <id> | --root]
+                   [--limit <n>] [--path <path>] [--json]
+  cairn work blocked [--status <status>] [--priority <0-4>] [--type <type>]
+                     [--assignee <name> | --unassigned]
+                     [--label <label> ...] [--parent <id> | --root]
+                     [--limit <n>] [--path <path>] [--json]
   cairn work update <id> [--title <text>] [--description <text>]
                     [--priority <0-4>] [--type <type>]
                     [--assignee <name> | --clear-assignee]
@@ -110,6 +120,24 @@ function optionValue(
   return value;
 }
 
+function optionValues(
+  arguments_: readonly string[],
+  option: string,
+): readonly string[] {
+  const values: string[] = [];
+  for (const [index, argument] of arguments_.entries()) {
+    if (argument !== option) {
+      continue;
+    }
+    const value = arguments_[index + 1];
+    if (value === undefined || value.startsWith("--")) {
+      throw new Error(`Missing value for ${option}`);
+    }
+    values.push(value);
+  }
+  return values;
+}
+
 function optionalRevision(arguments_: readonly string[]): number | undefined {
   const value = optionValue(arguments_, "--if-revision");
   if (value === undefined) {
@@ -122,6 +150,46 @@ function optionalRevision(arguments_: readonly string[]): number | undefined {
     );
   }
   return revision;
+}
+
+function workListFilter(arguments_: readonly string[]) {
+  const statusValue = optionValue(arguments_, "--status");
+  const priorityValue = optionValue(arguments_, "--priority");
+  const typeValue = optionValue(arguments_, "--type");
+  const limitValue = optionValue(arguments_, "--limit");
+  const assignee = optionValue(arguments_, "--assignee");
+  const unassigned = hasFlag(arguments_, "--unassigned");
+  const parent = optionValue(arguments_, "--parent");
+  const root = hasFlag(arguments_, "--root");
+  if (assignee !== undefined && unassigned) {
+    throw new Error("Use either --assignee or --unassigned, not both");
+  }
+  if (parent !== undefined && root) {
+    throw new Error("Use either --parent or --root, not both");
+  }
+  const labels = optionValues(arguments_, "--label");
+  let limit: number | undefined;
+  if (limitValue !== undefined) {
+    limit = Number(limitValue);
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new WorkItemValidationError(
+        "Result limit must be a positive integer",
+      );
+    }
+  }
+  return {
+    assignee,
+    labels: labels.length === 0 ? undefined : labels,
+    limit,
+    parent,
+    priority: priorityValue === undefined ? undefined : Number(priorityValue),
+    root: root ? true : undefined,
+    status: statusValue === undefined
+      ? undefined
+      : parseWorkItemStatus(statusValue),
+    type: typeValue === undefined ? undefined : parseWorkItemType(typeValue),
+    unassigned: unassigned ? true : undefined,
+  };
 }
 
 function workItemChanges(arguments_: readonly string[]): WorkItemChanges {
@@ -306,13 +374,16 @@ async function runWorkCommand(
   }
 
   if (action === "list") {
-    printWorkList(await listWork({ path }), json);
+    printWorkList(
+      await listWork({ path, ...workListFilter(arguments_) }),
+      json,
+    );
     return 0;
   }
 
   if (action === "ready") {
     printReadiness(
-      await listReadyWork({ path }),
+      await listReadyWork({ path, ...workListFilter(arguments_) }),
       json,
       hasFlag(arguments_, "--explain"),
     );
@@ -320,7 +391,11 @@ async function runWorkCommand(
   }
 
   if (action === "blocked") {
-    printReadiness(await listBlockedWork({ path }), json, true);
+    printReadiness(
+      await listBlockedWork({ path, ...workListFilter(arguments_) }),
+      json,
+      true,
+    );
     return 0;
   }
 
