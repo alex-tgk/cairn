@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { resolveDataDirectory } from "../platform/data-directory.ts";
 import {
   getProjectWorkspaceCount,
+  getWorkspaceId,
   openCairnDatabase,
   registerProjectWorkspace,
 } from "../storage/database.ts";
@@ -26,6 +27,7 @@ export type ProjectStatus = Readonly<{
   name: string;
   projectId: string;
   workspaceCount: number;
+  workspaceId: string;
   workspacePath: string;
 }>;
 
@@ -47,11 +49,12 @@ function registerCurrentWorkspace(
   const idFactory = options.idFactory ?? randomUUID;
 
   try {
+    const generatedWorkspaceId = idFactory();
     registerProjectWorkspace(database, {
       name: located.manifest.name,
       now,
       projectId: located.manifest.projectId,
-      workspaceId: idFactory(),
+      workspaceId: generatedWorkspaceId,
       workspacePath: located.workspacePath,
     });
 
@@ -64,6 +67,9 @@ function registerCurrentWorkspace(
         database,
         located.manifest.projectId,
       ),
+      workspaceId:
+        getWorkspaceId(database, located.workspacePath) ??
+        generatedWorkspaceId,
       workspacePath: located.workspacePath,
     };
   } finally {

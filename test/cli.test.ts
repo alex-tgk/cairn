@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1144,5 +1144,66 @@ describe("Cairn CLI", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("No Cairn project found");
+  });
+
+  test("refreshes, rebuilds, and reports context index status", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    mkdirSync(join(workspace, "docs"));
+    writeFileSync(join(workspace, "docs", "notes.md"), "# Notes\n");
+
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const notIndexed = JSON.parse(
+      runCli(["context", "status", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as readonly { state: string }[];
+    expect(notIndexed).toHaveLength(1);
+    expect(notIndexed[0]?.state).toBe("not_indexed");
+
+    const refreshed = JSON.parse(
+      runCli(["context", "refresh", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as readonly {
+      counts: { added: number };
+      mode: string;
+      status: string;
+    }[];
+    expect(refreshed).toHaveLength(1);
+    expect(refreshed[0]?.mode).toBe("refresh");
+    expect(refreshed[0]?.status).toBe("succeeded");
+    expect(refreshed[0]?.counts.added).toBe(1);
+
+    const indexed = JSON.parse(
+      runCli(["context", "status", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as readonly { sources: readonly { activeDocumentCount: number }[]; state: string }[];
+    expect(indexed[0]?.state).toBe("indexed");
+    expect(indexed[0]?.sources[0]?.activeDocumentCount).toBe(1);
+
+    const rebuilt = JSON.parse(
+      runCli(["context", "rebuild", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as readonly { mode: string }[];
+    expect(rebuilt[0]?.mode).toBe("rebuild");
+
+    const all = JSON.parse(
+      runCli(["context", "status", "--all", "--json"], dataDirectory).stdout,
+    ) as readonly { state: string }[];
+    expect(all).toHaveLength(1);
+    expect(all[0]?.state).toBe("indexed");
+
+    const invalidScope = runCli(
+      ["context", "status", "--all", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(invalidScope.exitCode).toBe(2);
+
+    const unknownAction = runCli(
+      ["context", "bogus", "--path", workspace],
+      dataDirectory,
+    );
+    expect(unknownAction.exitCode).toBe(2);
   });
 });

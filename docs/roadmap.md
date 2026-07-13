@@ -83,6 +83,23 @@ essential Engram cutover contract and its explicit deferrals.
 
 Implement source configuration, safe file discovery, incremental hashing, document versions, FTS ranking, snippets, project primer, and a typed cross-domain search projection.
 
+Current progress:
+
+- [x] `cairn context refresh` and `cairn context rebuild` wiring the existing
+      migration-4 context-indexing domain (source discovery, incremental
+      hashing, document versioning) to the CLI, scoped to the current
+      project/workspace by default or every already-registered
+      project/workspace with `--all`
+- [x] `cairn context status` reporting per-source `not_indexed` / `indexed` /
+      `refresh_required` state, document counts, and the last index run
+- [ ] `cairn context search "<query>"` with weighted BM25 ranking and snippets
+      per ADR 0009
+- [ ] `cairn context prime "<question>"` composing project identity, index
+      status, and question-specific results
+
+See [ADR 0009](decisions/0009-essential-agents-context-cutover-contract.md)
+for the full CLI/behavior contract.
+
 ## Slice 5: migration and operations
 
 Implement read-only Beads and Engram inventories, idempotent dry-run imports, count/checksum reports, backup, restore, export, and recovery guidance.

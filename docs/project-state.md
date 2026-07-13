@@ -11,7 +11,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 103 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 104 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -75,29 +75,36 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   as a deterministic primer surfacing pinned memories, the most recent
   session summary, and recent non-session-summary memories
 - Slice 3 (durable memory) is complete per ADR 0010
+- `ProjectStatus` now includes `workspaceId`, resolved from the registered
+  workspace row rather than only the caller-generated id, so downstream
+  domains (context) can address a workspace deterministically
+- `cairn context refresh`, `cairn context rebuild`, and `cairn context status`
+  wiring the existing migration-4 context-indexing domain to the CLI, scoped
+  to the current project/workspace by default or every already-registered
+  project/workspace with `--all` (never crawling unregistered directories)
 
 ## Not implemented
 
-- Context source discovery and indexing CLI commands and user-facing search
+- Context source configuration CLI commands (add/list/remove sources)
+- Context search and project primer CLI commands
 - Beads and Engram import
 - Backup and restore commands
 - Prebuilt release executables, Homebrew bottles, and macOS signing/notarization
 
 ## Next work slice
 
-Slice 3 (durable memory) is complete: capture, topic-upsert, list, search,
-relations, timeline, pin/archive state, session-summary listing, and the
-`memory context` primer are all implemented per ADR 0010. Move to Slice 4
-(context and unified search), wiring the existing context-indexing domain
-(migration 4) to CLI commands:
+Slice 4 (context and unified search) is underway. `cairn context refresh`,
+`cairn context rebuild`, and `cairn context status` are wired to the existing
+migration-4 context-indexing domain. Remaining Slice 4 work:
 
-1. Context source configuration CLI commands (add/list/remove sources)
-2. Refresh/rebuild indexing CLI commands over the existing discovery and
-   hashing domain
-3. User-facing search across the shared FTS5 projection, unified with work
-   and memory results
-4. Stable human and JSON CLI contracts
-5. Tests, documentation, and migration implications in the same work units
+1. User-facing `cairn context search "<query>"` with weighted BM25 ranking
+   (title 10, body 1, tags 5, source-path 4) and snippets, unified with work
+   and memory results, per ADR 0009
+2. `cairn context prime "<question>"` composing project identity, index
+   status, and question-specific results
+3. Stable human and JSON CLI contracts for both, including ADR 0009's exit
+   code mapping (0 success, 1 operational failure, 2 invalid arguments)
+4. Tests, documentation, and migration implications in the same work units
 
 ## Durable decisions
 
