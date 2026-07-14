@@ -13,8 +13,12 @@ import { CairnQueryDatabase } from "../storage/query-database.ts";
 import {
   getContextIndexStatus,
   indexContext,
+  primeContext,
+  searchContext,
   type ContextIndexStatusSummary,
   type ContextIndexSummary,
+  type ContextPrimeView,
+  type ContextSearchResultView,
 } from "./context-service.ts";
 import type { ContextIndexMode } from "./context-index-repository.ts";
 import { SqliteContextIndexRepository } from "./sqlite-context-index-repository.ts";
@@ -147,5 +151,52 @@ export async function getContextStatus(
         }),
       ),
     ),
+  );
+}
+
+export async function searchContextWorkspace(
+  options: ContextWorkspaceOptions,
+  query: string,
+  limit?: number,
+): Promise<ContextSearchResultView> {
+  const { databasePath, targets } = resolveScope(options);
+
+  return withContextRepository(databasePath, (repository) =>
+    searchContext({
+      limit,
+      query,
+      repository,
+      scopes: targets.map((target) => ({
+        projectId: target.projectId,
+        workspaceId: target.workspaceId,
+      })),
+    }),
+  );
+}
+
+export async function primeContextWorkspace(
+  options: ContextWorkspaceOptions,
+  question: string,
+  limit?: number,
+): Promise<ContextPrimeView> {
+  if (options.all) {
+    throw new ContextScopeValidationError(
+      "cairn context prime does not support --all; pass --path or run from the project workspace",
+    );
+  }
+
+  const project = resolveProjectStatus(options);
+  return withContextRepository(project.databasePath, (repository) =>
+    primeContext({
+      limit,
+      projectIdentity: {
+        name: project.name,
+        projectId: project.projectId,
+        workspaceId: project.workspaceId,
+        workspacePath: project.workspacePath,
+      },
+      question,
+      repository,
+    }),
   );
 }

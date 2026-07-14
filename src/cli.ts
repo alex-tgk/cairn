@@ -77,9 +77,20 @@ import {
 import {
   ContextScopeValidationError,
   getContextStatus,
+  primeContextWorkspace,
   runContextIndex,
+  searchContextWorkspace,
 } from "./context/context-workspace-service.ts";
-import type { ContextIndexSummary, ContextIndexStatusSummary } from "./context/context-service.ts";
+import {
+  ContextQueryValidationError,
+  parseContextSearchLimit,
+} from "./context/context-query.ts";
+import type {
+  ContextIndexStatusSummary,
+  ContextIndexSummary,
+  ContextPrimeView,
+  ContextSearchResultView,
+} from "./context/context-service.ts";
 
 const HELP = `Cairn ${packageJson.version}
 
@@ -146,6 +157,8 @@ Usage:
   cairn context refresh [--all] [--path <path>] [--json]
   cairn context rebuild [--all] [--path <path>] [--json]
   cairn context status [--all] [--path <path>] [--json]
+  cairn context search <query> [--all] [--path <path>] [--limit <n>] [--json]
+  cairn context prime <question> [--path <path>] [--limit <n>] [--json]
   cairn --version
   cairn --help
 `;
@@ -828,11 +841,60 @@ function printContextStatusSummaries(
   }
 }
 
+function printContextSearchResult(
+  result: ContextSearchResultView,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (result.matches.length === 0) {
+    console.log(`No context matches for: ${result.query}`);
+    return;
+  }
+  for (const match of result.matches) {
+    console.log(`${match.relativePath} [${match.projectId}/${match.workspaceId}]`);
+    console.log(`  tags: ${match.tags.join(", ") || "(none)"}`);
+    console.log(`  matched: ${match.matchedTerms.join(", ") || "(none)"}`);
+    console.log(`  ${match.snippet}`);
+  }
+}
+
+function printContextPrimeView(
+  primer: ContextPrimeView,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(primer, null, 2));
+    return;
+  }
+  console.log(
+    `Project: ${primer.projectIdentity.name} [${primer.projectIdentity.projectId}]`,
+  );
+  console.log(`Workspace: ${primer.projectIdentity.workspacePath}`);
+  console.log(`Index status: ${primer.indexStatus.state}`);
+  for (const warning of primer.warnings) {
+    console.log(`Warning: ${warning}`);
+  }
+  if (primer.recommendedCommand !== null) {
+    console.log(`Recommended: ${primer.recommendedCommand}`);
+  }
+  console.log(`Question: ${primer.question}`);
+  if (primer.results.length === 0) {
+    console.log("No matching context found.");
+    return;
+  }
+  for (const match of primer.results) {
+    console.log(`  ${match.relativePath}: ${match.snippet}`);
+  }
+}
+
 async function runContextCommand(
   arguments_: readonly string[],
   json: boolean,
 ): Promise<number> {
-  const [action] = arguments_;
+  const [action, primary] = arguments_;
   const explicitPath = optionValue(arguments_, "--path");
   const options = {
     all: hasFlag(arguments_, "--all"),
@@ -853,8 +915,35 @@ async function runContextCommand(
       printContextStatusSummaries(await getContextStatus(options), json);
       return 0;
     }
+
+    if (action === "search") {
+      printContextSearchResult(
+        await searchContextWorkspace(
+          options,
+          primary ?? "",
+          parseContextSearchLimit(optionValue(arguments_, "--limit")),
+        ),
+        json,
+      );
+      return 0;
+    }
+
+    if (action === "prime") {
+      printContextPrimeView(
+        await primeContextWorkspace(
+          options,
+          primary ?? "",
+          parseContextSearchLimit(optionValue(arguments_, "--limit")),
+        ),
+        json,
+      );
+      return 0;
+    }
   } catch (error) {
-    if (error instanceof ContextScopeValidationError) {
+    if (
+      error instanceof ContextScopeValidationError ||
+      error instanceof ContextQueryValidationError
+    ) {
       printCliError(error, json);
       return 2;
     }
@@ -1185,6 +1274,9 @@ function describeCliError(error: unknown): CliError {
     return { code: "project_not_found", details: {}, message: error.message };
   }
   if (error instanceof ContextScopeValidationError) {
+    return { code: error.code, details: {}, message: error.message };
+  }
+  if (error instanceof ContextQueryValidationError) {
     return { code: error.code, details: {}, message: error.message };
   }
   return {

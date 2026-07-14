@@ -11,7 +11,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 104 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 106 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -82,29 +82,41 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   wiring the existing migration-4 context-indexing domain to the CLI, scoped
   to the current project/workspace by default or every already-registered
   project/workspace with `--all` (never crawling unregistered directories)
+- `cairn context search "<query>"` with safe literal-term parsing (rejects
+  raw FTS syntax and empty/punctuation-only queries), OR semantics, weighted
+  BM25 ranking (title 10, body 1, tags 5, source-path 4) with deterministic
+  title/source-path/entity-id tie-breaks, matched-term reporting, and a
+  fixed-marker (`»`/`«`) snippet, scoped to the current project/workspace by
+  default or every registered project/workspace with `--all`
+- `cairn context prime "<question>"` composing project identity, index
+  status (including `not_indexed`/`refresh_required` warnings and a
+  recommended `cairn context refresh` command), and question-specific
+  search results in a stable order; rejects `--all` since prime is
+  single-project only
+- Slice 4's search/prime CLI surface follows ADR 0009's exit code mapping
+  (0 success including empty results, 2 invalid query/limit/scope)
 
 ## Not implemented
 
 - Context source configuration CLI commands (add/list/remove sources)
-- Context search and project primer CLI commands
+- Unified cross-domain search (work + memory + context in one query)
 - Beads and Engram import
 - Backup and restore commands
 - Prebuilt release executables, Homebrew bottles, and macOS signing/notarization
 
 ## Next work slice
 
-Slice 4 (context and unified search) is underway. `cairn context refresh`,
-`cairn context rebuild`, and `cairn context status` are wired to the existing
-migration-4 context-indexing domain. Remaining Slice 4 work:
+Slice 4 (context and unified search)'s per-domain context CLI is complete:
+`cairn context refresh`, `rebuild`, `status`, `search`, and `prime` are all
+wired to the migration-4 context-indexing domain per ADR 0009. Remaining
+Slice 4 work:
 
-1. User-facing `cairn context search "<query>"` with weighted BM25 ranking
-   (title 10, body 1, tags 5, source-path 4) and snippets, unified with work
-   and memory results, per ADR 0009
-2. `cairn context prime "<question>"` composing project identity, index
-   status, and question-specific results
-3. Stable human and JSON CLI contracts for both, including ADR 0009's exit
-   code mapping (0 success, 1 operational failure, 2 invalid arguments)
-4. Tests, documentation, and migration implications in the same work units
+1. Decide whether a true unified cross-domain search command (spanning work,
+   memory, and context in one query/ranking) is still in scope for this
+   slice or deferred to a later slice
+2. Context source configuration CLI commands (add/list/remove sources),
+   currently only configurable via `.cairn/context.toml`
+3. Tests, documentation, and migration implications in the same work units
 
 ## Durable decisions
 

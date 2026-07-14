@@ -1206,4 +1206,96 @@ describe("Cairn CLI", () => {
     );
     expect(unknownAction.exitCode).toBe(2);
   });
+
+  test("searches context documents and builds a project primer", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    mkdirSync(join(workspace, "docs"));
+    writeFileSync(
+      join(workspace, "docs", "notes.md"),
+      "# Auth Notes\n\nThe auth flow uses refresh tokens rotated on every login.\n",
+    );
+    writeFileSync(
+      join(workspace, "docs", "deploy.md"),
+      "# Deploy Notes\n\nDeployment uses GitLab CI with manual gates.\n",
+    );
+
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const notIndexedPrimer = JSON.parse(
+      runCli(
+        ["context", "prime", "how does auth work", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as {
+      indexStatus: { state: string };
+      recommendedCommand: string | null;
+      results: readonly unknown[];
+      warnings: readonly string[];
+    };
+    expect(notIndexedPrimer.indexStatus.state).toBe("not_indexed");
+    expect(notIndexedPrimer.recommendedCommand).toBe("cairn context refresh");
+    expect(notIndexedPrimer.warnings).toHaveLength(1);
+    expect(notIndexedPrimer.results).toHaveLength(0);
+
+    runCli(["context", "refresh", "--path", workspace, "--json"], dataDirectory);
+
+    const searchResult = JSON.parse(
+      runCli(
+        ["context", "search", "auth flow", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as {
+      matches: readonly { relativePath: string; snippet: string }[];
+      query: string;
+      termCount: number;
+    };
+    expect(searchResult.termCount).toBe(2);
+    expect(searchResult.matches).toHaveLength(1);
+    expect(searchResult.matches[0]?.relativePath).toBe("docs/notes.md");
+    expect(searchResult.matches[0]?.snippet).toContain("»");
+
+    const noMatches = JSON.parse(
+      runCli(
+        ["context", "search", "nonexistentterm", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { matches: readonly unknown[] };
+    expect(noMatches.matches).toHaveLength(0);
+
+    const invalidQuery = runCli(
+      ["context", "search", "!!!", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(invalidQuery.exitCode).toBe(2);
+
+    const invalidLimit = runCli(
+      ["context", "search", "auth", "--path", workspace, "--limit", "0", "--json"],
+      dataDirectory,
+    );
+    expect(invalidLimit.exitCode).toBe(2);
+
+    const indexedPrimer = JSON.parse(
+      runCli(
+        ["context", "prime", "how does auth work", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as {
+      indexStatus: { state: string };
+      recommendedCommand: string | null;
+      results: readonly { relativePath: string }[];
+      warnings: readonly string[];
+    };
+    expect(indexedPrimer.indexStatus.state).toBe("indexed");
+    expect(indexedPrimer.recommendedCommand).toBeNull();
+    expect(indexedPrimer.warnings).toHaveLength(0);
+    expect(indexedPrimer.results[0]?.relativePath).toBe("docs/notes.md");
+
+    const primeAllRejected = runCli(
+      ["context", "prime", "auth", "--all", "--json"],
+      dataDirectory,
+    );
+    expect(primeAllRejected.exitCode).toBe(2);
+  });
 });

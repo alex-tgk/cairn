@@ -11,6 +11,7 @@ import type {
   ContextIndexRunCounts,
   ContextIndexRunRecord,
   ContextIndexStatus,
+  ContextSearchMatch,
   ContextSourceRecord,
   ListContextIndexStatusInput,
   UpsertContextSourceInput,
@@ -142,6 +143,10 @@ class FakeContextIndexRepository implements ContextIndexRepository {
     _input: ListContextIndexStatusInput,
   ): Promise<readonly ContextIndexStatus[]> {
     return this.statuses;
+  }
+
+  async searchDocuments(): Promise<readonly ContextSearchMatch[]> {
+    return [];
   }
 }
 
