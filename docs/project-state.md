@@ -105,12 +105,29 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   context search), with `--kind <work|memory|context>` filtering
   (repeatable), `--all`/`--path` scope selection, and the same safe
   literal-term query parsing and exit-code contract as `context search`
+- `scripts/import-beads.ts`: idempotent import of `bd export` JSONL issues
+  into work items through the existing `work-service.ts` public API (no raw
+  SQL), mapping status/priority/type 1:1 where valid Cairn enum values and
+  falling back to `open`/2/`task` otherwise, transitioning claim/close state
+  to match Beads status, appending acceptance criteria/owner/close reason as
+  a note, and tagging each item with a `bd:<issue-id>` label so re-runs skip
+  already-imported issues. Per ADR 0008, dependencies/comments/labels are
+  intentionally excluded (bulk graph import is out of scope)
+- `scripts/import-engram.ts`: idempotent import of `engram export` JSON
+  observations into memories through `memory-service.ts`'s `saveMemory`,
+  using an `import/engram/<sync_id>` topic key so re-runs upsert the same
+  memory per ADR 0010's topic-upsert rule; maps Engram's `type` 1:1 onto
+  Cairn's `MEMORY_TYPES` where valid, with a documented fallback (observed
+  Engram `refactor` type, which is outside Cairn's closed set, maps to
+  `pattern`); sessions and prompts are not imported (no Cairn equivalent).
+  Both scripts were verified against real `bd export`/`engram export` data
+  from local repos, including a re-run idempotency check
 
 ## Not implemented
 
 - Context source configuration CLI commands (add/list/remove sources)
-- Beads and Engram import
-- Backup and restore commands
+- Count/checksum inventory reports, backup, restore, export, and recovery
+  guidance
 - Prebuilt release executables, Homebrew bottles, and macOS signing/notarization
 
 ## Next work slice
@@ -118,12 +135,13 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 Slice 4 (context and unified search) is complete: `cairn context refresh`,
 `rebuild`, `status`, `search`, `prime`, and the cross-domain `cairn search`
 are all wired per ADR 0009 and the architecture's search-domain rules.
-Candidate next work:
+Slice 5's flat-field Beads/Engram import scripts are done; Candidate next
+work:
 
 1. Context source configuration CLI commands (add/list/remove sources),
    currently only configurable via `.cairn/context.toml`
-2. Slice 5 (migration and operations): Beads and Engram import, backup and
-   restore
+2. Slice 5 (migration and operations) remainder: count/checksum inventory
+   reports, backup, restore, export, and recovery guidance
 3. Tests, documentation, and migration implications in the same work units
 
 ## Durable decisions

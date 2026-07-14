@@ -81,6 +81,28 @@ bun run build
 
 Use `CAIRN_DATA_DIR` to override the platform data directory during development or testing.
 
+### Importing from Beads and Engram
+
+`scripts/import-beads.ts` and `scripts/import-engram.ts` import flat issue and
+observation data from existing `bd export` (JSONL) and `engram export` (JSON)
+files into a Cairn project's work items and memories. Both scripts are
+idempotent: re-running them against the same export does not duplicate
+records.
+
+```sh
+bd export > beads-export.jsonl
+bun run scripts/import-beads.ts beads-export.jsonl --path /path/to/project [--dry-run] [--json]
+
+engram export engram-export.json --project <name>
+bun run scripts/import-engram.ts engram-export.json --path /path/to/project [--project <name>] [--dry-run] [--json]
+```
+
+Per [ADR 0008](docs/decisions/0008-essential-beads-cutover-contract.md), the
+Beads import intentionally excludes bulk dependency-graph and comment
+migration; it imports title, description, status, priority, type, assignee,
+and close reason. The Engram import maps each observation to one memory
+(session and prompt records are not imported).
+
 ## Accepted direction
 
 | Topic | Decision |
@@ -113,7 +135,8 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | Local context domain, discovery, and incremental indexing | Implemented |
 | Context CLI (`refresh`, `rebuild`, `status`, `search`, `prime`) | Implemented |
 | Unified cross-domain search (`cairn search`) | Implemented |
-| Beads and Engram migration | Planned |
+| Beads and Engram import scripts | Implemented |
+| Backup, restore, and checksum reports | Planned |
 
 ## Documentation
 

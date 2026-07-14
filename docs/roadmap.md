@@ -11,7 +11,7 @@ The roadmap is ordered by dependency and risk reduction rather than dates.
 | 2. Work tracking | Essential Beads workflows | Implemented locally |
 | 3. Durable memory | Essential Engram workflows | In progress |
 | 4. Context and unified search | Essential `agents-context` workflows | Implemented locally |
-| 5. Migration and operations | Safe cutover, backup, and recovery | Planned |
+| 5. Migration and operations | Safe cutover, backup, and recovery | In progress |
 | 6. Distribution | Signed releases and Homebrew tap | Planned |
 
 ## Slice 1 exit criteria
@@ -107,6 +107,17 @@ for the full CLI/behavior contract.
 ## Slice 5: migration and operations
 
 Implement read-only Beads and Engram inventories, idempotent dry-run imports, count/checksum reports, backup, restore, export, and recovery guidance.
+
+- [x] `scripts/import-beads.ts` idempotent dry-run/real import of flat Beads
+      issue fields (title, description, status, priority, type, assignee,
+      close reason) into work items, tagged with a `bd:<issue-id>` label for
+      re-run detection, per ADR 0008's exclusion of bulk graph imports
+- [x] `scripts/import-engram.ts` idempotent dry-run/real import of Engram
+      observations into memories, addressed by `import/engram/<sync_id>`
+      topic keys so re-imports upsert in place per ADR 0010's topic-upsert
+      rule
+- [ ] Count/checksum inventory reports, backup, restore, export, and recovery
+      guidance
 
 ## Slice 6: distribution
 
