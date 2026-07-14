@@ -1,6 +1,6 @@
 # Cairn
 
-Cairn is a local-first work, memory, and context system for AI coding agents. Phase 1 replaces the essential workflows currently split across Beads, Engram, and `agents-context` without requiring embeddings, inference, or a daemon.
+Cairn is a local-first work, memory, and context system for AI coding agents. Phase 1 replaces the essential workflows currently split across an external issue tracker, an external memory tool, and prior local-context tooling without requiring embeddings, inference, or a daemon.
 
 The first executable foundation is implemented: Cairn can create stable project identity, register renamed or cloned workspaces in SQLite, report project status, verify database integrity and FTS5, and compile into a standalone executable.
 
@@ -81,33 +81,11 @@ bun run build
 
 Use `CAIRN_DATA_DIR` to override the platform data directory during development or testing.
 
-### Importing from Beads and Engram
-
-`scripts/import-beads.ts` and `scripts/import-engram.ts` import flat issue and
-observation data from existing `bd export` (JSONL) and `engram export` (JSON)
-files into a Cairn project's work items and memories. Both scripts are
-idempotent: re-running them against the same export does not duplicate
-records.
-
-```sh
-bd export > beads-export.jsonl
-bun run scripts/import-beads.ts beads-export.jsonl --path /path/to/project [--dry-run] [--json]
-
-engram export engram-export.json --project <name>
-bun run scripts/import-engram.ts engram-export.json --path /path/to/project [--project <name>] [--dry-run] [--json]
-```
-
-Per [ADR 0008](docs/decisions/0008-essential-beads-cutover-contract.md), the
-Beads import intentionally excludes bulk dependency-graph and comment
-migration; it imports title, description, status, priority, type, assignee,
-and close reason. The Engram import maps each observation to one memory
-(session and prompt records are not imported).
-
 ## Accepted direction
 
 | Topic | Decision |
 | --- | --- |
-| Phase 1 | Replace essential Beads, Engram, and `agents-context` workflows |
+| Phase 1 | Replace essential work-tracking, memory, and context-search workflows currently handled by external tools |
 | Storage | One user-level SQLite database with FTS5 |
 | Identity | Stable project UUID plus separate physical workspace registrations |
 | Runtime | Strict TypeScript on Bun with `bun:sqlite` |
@@ -135,7 +113,7 @@ and close reason. The Engram import maps each observation to one memory
 | Local context domain, discovery, and incremental indexing | Implemented |
 | Context CLI (`refresh`, `rebuild`, `status`, `search`, `prime`) | Implemented |
 | Unified cross-domain search (`cairn search`) | Implemented |
-| Beads and Engram import scripts | Implemented |
+| Data import scripts (internal) | Implemented |
 | Backup, restore, and checksum reports | Planned |
 
 ## Documentation

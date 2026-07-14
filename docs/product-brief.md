@@ -1,6 +1,6 @@
 # Unify local agent work, memory, and context
 
-Cairn replaces the essential local workflows currently divided across Beads, Engram, and `agents-context`. One deterministic CLI and SQLite store will let agents identify a project, inspect work, recover prior decisions, search local documentation, and leave a reliable handoff.
+Cairn replaces the essential local workflows currently divided across an external issue tracker, an external memory tool, and prior local-context tooling. One deterministic CLI and SQLite store will let agents identify a project, inspect work, recover prior decisions, search local documentation, and leave a reliable handoff.
 
 ## Product decisions
 
@@ -18,9 +18,9 @@ Cairn replaces the essential local workflows currently divided across Beads, Eng
 
 The current workflow distributes responsibility across three systems:
 
-- Beads tracks issues, dependencies, ready work, comments, and history.
-- Engram stores sessions, durable observations, topics, scopes, and timelines.
-- `agents-context` indexes local project material and provides deterministic full-text search.
+- An external issue tracker tracks issues, dependencies, ready work, comments, and history.
+- An external memory tool stores sessions, durable observations, topics, scopes, and timelines.
+- Prior local-context tooling indexes local project material and provides deterministic full-text search.
 
 Agents must know which tool to call, how each tool identifies a project, where each tool stores data, and how to recover when paths or services change. Cairn provides one stable project model and command surface.
 
@@ -60,7 +60,7 @@ Agents must know which tool to call, how each tool identifies a project, where e
 - Search work, memories, and indexed context through one query surface
 - Stable JSON output and exit codes
 - Backup, restore, export, import, migrations, and integrity checks
-- Read-only migration from Beads and Engram with dry-run reports
+- Read-only migration from prior external tools with dry-run reports
 
 ## Success criteria
 
@@ -71,7 +71,7 @@ Agents must know which tool to call, how each tool identifies a project, where e
 - [ ] A memory saved by one process is recoverable by another with provenance.
 - [ ] Indexed context updates incrementally and returns explainable results.
 - [ ] One query can return typed work, memory, and context results.
-- [ ] Existing Beads and Engram data can be migrated with verified counts.
+- [ ] Existing data from prior external tools can be migrated with verified counts.
 - [ ] Release artifacts pass tests on macOS, Linux, and Windows.
 
 ## Deferred
@@ -81,5 +81,5 @@ Agents must know which tool to call, how each tool identifies a project, where e
 - Web interface
 - Cloud accounts and team permissions
 - Dolt-style database branching and merge
-- Advanced Beads formulas, molecules, gates, and external service integrations
+- Advanced external-issue-tracker formulas, molecules, gates, and external service integrations
 - Code intelligence already provided by Serena and codebase-memory

@@ -105,22 +105,30 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   context search), with `--kind <work|memory|context>` filtering
   (repeatable), `--all`/`--path` scope selection, and the same safe
   literal-term query parsing and exit-code contract as `context search`
-- `scripts/import-beads.ts`: idempotent import of `bd export` JSONL issues
+- An internal import script imports flat issue-tracker export data (JSONL)
   into work items through the existing `work-service.ts` public API (no raw
   SQL), mapping status/priority/type 1:1 where valid Cairn enum values and
   falling back to `open`/2/`task` otherwise, transitioning claim/close state
-  to match Beads status, appending acceptance criteria/owner/close reason as
-  a note, and tagging each item with a `bd:<issue-id>` label so re-runs skip
-  already-imported issues. Per ADR 0008, dependencies/comments/labels are
-  intentionally excluded (bulk graph import is out of scope)
-- `scripts/import-engram.ts`: idempotent import of `engram export` JSON
+  to match the source tool's status, appending acceptance criteria/owner/close
+  reason as a note, and tagging each item with a label derived from the
+  original issue ID so re-runs skip already-imported issues. Per ADR 0008,
+  dependencies/comments/labels are intentionally excluded (bulk graph import
+  is out of scope)
+- An internal import script imports memory-tool export data (JSON)
   observations into memories through `memory-service.ts`'s `saveMemory`,
-  using an `import/engram/<sync_id>` topic key so re-runs upsert the same
-  memory per ADR 0010's topic-upsert rule; maps Engram's `type` 1:1 onto
-  Cairn's `MEMORY_TYPES` where valid, with a documented fallback (observed
-  Engram `refactor` type, which is outside Cairn's closed set, maps to
+  using an `import/<source>/<sync_id>` topic key so re-runs upsert the same
+  memory per ADR 0010's topic-upsert rule; maps the source tool's `type` 1:1
+  onto Cairn's `MEMORY_TYPES` where valid, with a documented fallback (an
+  observed `refactor` type, which is outside Cairn's closed set, maps to
   `pattern`); sessions and prompts are not imported (no Cairn equivalent).
-  Both scripts were verified against real `bd export`/`engram export` data
+- An internal import script imports rows from a local RAG/context tool's
+  SQLite document index into memories, filtered to one source project name
+  at a time, using an `import/context/<row-id>` topic key for idempotent
+  re-runs. It maps into the memory domain rather than the context domain,
+  since the source index stores flattened, pre-chunked content without the
+  on-disk file hashes Cairn's context indexer needs for incremental
+  refresh; unrecognized row kinds fall back to the `discovery` memory type.
+  All three internal import scripts were verified against real export data
   from local repos, including a re-run idempotency check
 
 ## Not implemented
@@ -135,7 +143,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 Slice 4 (context and unified search) is complete: `cairn context refresh`,
 `rebuild`, `status`, `search`, `prime`, and the cross-domain `cairn search`
 are all wired per ADR 0009 and the architecture's search-domain rules.
-Slice 5's flat-field Beads/Engram import scripts are done; Candidate next
+Slice 5's flat-field import scripts for prior external tools are done; Candidate next
 work:
 
 1. Context source configuration CLI commands (add/list/remove sources),
@@ -146,7 +154,7 @@ work:
 
 ## Durable decisions
 
-- Phase 1 replaces essential Beads, Engram, and `agents-context` workflows.
+- Phase 1 replaces essential work-tracking, memory, and context-search workflows currently handled by external tools.
 - SQLite is the source of truth; Dolt remains a rejected Phase 1 alternative.
 - Project identity is independent from filesystem paths.
 - TypeScript/Bun remains contingent on cross-platform release validation.

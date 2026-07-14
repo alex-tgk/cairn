@@ -8,9 +8,9 @@ The roadmap is ordered by dependency and risk reduction rather than dates.
 | --- | --- | --- |
 | 0. Product and architecture | Scope and durable decisions | Complete |
 | 1. Project and SQLite foundation | Rename-safe identity and executable CLI | Implemented locally |
-| 2. Work tracking | Essential Beads workflows | Implemented locally |
-| 3. Durable memory | Essential Engram workflows | In progress |
-| 4. Context and unified search | Essential `agents-context` workflows | Implemented locally |
+| 2. Work tracking | Essential work-tracking workflows | Implemented locally |
+| 3. Durable memory | Essential memory workflows | In progress |
+| 4. Context and unified search | Essential context-search workflows | Implemented locally |
 | 5. Migration and operations | Safe cutover, backup, and recovery | In progress |
 | 6. Distribution | Signed releases and Homebrew tap | Planned |
 
@@ -28,7 +28,7 @@ The roadmap is ordered by dependency and risk reduction rather than dates.
 
 ## Slice 2: work tracking
 
-Implement the minimum Beads-compatible workflow:
+Implement the minimum work-tracking workflow needed to replace an external issue tracker:
 
 1. Work-item schema and audit events
 2. Create, show, list, update, claim, close, and reopen
@@ -73,11 +73,11 @@ Current progress:
       `memory context` as the primer command surfacing pinned memories, the
       most recent session summary, and recent non-session-summary memories
 
-Slice 3 (durable memory) is complete per ADR 0010's essential Engram cutover
+Slice 3 (durable memory) is complete per ADR 0010's essential memory cutover
 contract, including its explicit deferrals.
 
-See [ADR 0010](decisions/0010-essential-engram-cutover-contract.md) for the
-essential Engram cutover contract and its explicit deferrals.
+See [ADR 0010](decisions/0010-essential-memory-cutover-contract.md) for the
+essential memory cutover contract and its explicit deferrals.
 
 ## Slice 4: context and unified search
 
@@ -101,21 +101,22 @@ Current progress:
       ranking, safe query parsing, and snippet contract, with `--kind`
       filtering and `--all`/`--path` scope selection
 
-See [ADR 0009](decisions/0009-essential-agents-context-cutover-contract.md)
+See [ADR 0009](decisions/0009-essential-context-search-cutover-contract.md)
 for the full CLI/behavior contract.
 
 ## Slice 5: migration and operations
 
-Implement read-only Beads and Engram inventories, idempotent dry-run imports, count/checksum reports, backup, restore, export, and recovery guidance.
+Implement read-only inventories of prior external tools, idempotent dry-run imports, count/checksum reports, backup, restore, export, and recovery guidance.
 
-- [x] `scripts/import-beads.ts` idempotent dry-run/real import of flat Beads
-      issue fields (title, description, status, priority, type, assignee,
-      close reason) into work items, tagged with a `bd:<issue-id>` label for
-      re-run detection, per ADR 0008's exclusion of bulk graph imports
-- [x] `scripts/import-engram.ts` idempotent dry-run/real import of Engram
-      observations into memories, addressed by `import/engram/<sync_id>`
-      topic keys so re-imports upsert in place per ADR 0010's topic-upsert
-      rule
+- [x] An internal import script performs an idempotent dry-run/real import of
+      flat issue-tracker export fields (title, description, status, priority,
+      type, assignee, close reason) into work items, tagged with a label
+      derived from the original issue ID for re-run detection, per ADR 0008's
+      exclusion of bulk graph imports
+- [x] An internal import script performs an idempotent dry-run/real import of
+      memory-tool export observations into memories, addressed by
+      `import/<source>/<sync_id>` topic keys so re-imports upsert in place per
+      ADR 0010's topic-upsert rule
 - [ ] Count/checksum inventory reports, backup, restore, export, and recovery
       guidance
 

@@ -95,7 +95,7 @@ The first slice implements:
 2. Durable memory capture, topics, context, and timelines
 3. Incremental source indexing and FTS search
 4. Unified typed search projection
-5. Beads and Engram migration
+5. External-tool data migration
 6. Backup, restore, release packaging, and Homebrew bottles
 
 ## Quality rules

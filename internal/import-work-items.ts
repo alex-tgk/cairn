@@ -1,17 +1,17 @@
 #!/usr/bin/env bun
 
-// Imports issues exported from Beads (`bd export`, JSONL format) into Cairn
-// work items. Scope matches ADR 0008: only flat issue fields are imported
+// Internal one-off tool: imports issues from an external issue tracker's
+// JSONL export into Cairn work items. Only flat issue fields are imported
 // (title, description, status, priority, type, assignee, timestamps, and the
-// close reason as a note). Dependencies, comments, and labels are explicitly
-// out of scope for bulk import.
+// close reason as a note). Dependencies, comments, and labels from the
+// source tracker are explicitly out of scope for bulk import.
 //
 // Usage:
-//   bun run scripts/import-beads.ts <bd-export.jsonl> --path <dir> [--data-dir <dir>] [--dry-run] [--json]
+//   bun run internal/import-work-items.ts <export.jsonl> --path <dir> [--data-dir <dir>] [--dry-run] [--json]
 //
-// Idempotent: each imported work item is tagged with a `bd:<issue-id>` label.
-// Re-running the script against the same export skips issues that already
-// have a matching label.
+// Idempotent: each imported work item is tagged with an `import-source:<issue-id>`
+// label. Re-running the script against the same export skips issues that
+// already have a matching label.
 
 import { readFileSync } from "node:fs";
 
@@ -25,7 +25,7 @@ import {
 } from "../src/work/work-service.ts";
 import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES } from "../src/work/work-item.ts";
 
-type BeadsIssue = Readonly<{
+type ExternalIssue = Readonly<{
   _type?: string;
   id: string;
   title: string;
@@ -74,7 +74,7 @@ function parseArguments(argv: readonly string[]): Options {
   const file = positional[0];
   if (!file) {
     console.error(
-      "Usage: bun run scripts/import-beads.ts <bd-export.jsonl> --path <dir> [--data-dir <dir>] [--dry-run] [--json]",
+      "Usage: bun run internal/import-work-items.ts <export.jsonl> --path <dir> [--data-dir <dir>] [--dry-run] [--json]",
     );
     process.exit(2);
   }
@@ -82,12 +82,12 @@ function parseArguments(argv: readonly string[]): Options {
   return { file, path: path ?? process.cwd(), dataDirectory, dryRun, json };
 }
 
-function parseIssues(fileContents: string): BeadsIssue[] {
+function parseIssues(fileContents: string): ExternalIssue[] {
   return fileContents
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as BeadsIssue)
+    .map((line) => JSON.parse(line) as ExternalIssue)
     .filter((issue) => issue._type === undefined || issue._type === "issue");
 }
 
@@ -119,12 +119,15 @@ function context(options: Options): Readonly<{ path: string; dataDirectory?: str
 }
 
 async function alreadyImported(options: Options, issueId: string): Promise<boolean> {
-  const existing = await listWork({ ...context(options), labels: [`bd:${issueId}`] });
+  const existing = await listWork({
+    ...context(options),
+    labels: [`import-source:${issueId}`],
+  });
   return existing.length > 0;
 }
 
 async function importIssue(
-  issue: BeadsIssue,
+  issue: ExternalIssue,
   options: Options,
 ): Promise<{ id: string; issueId: string; skipped: boolean }> {
   if (await alreadyImported(options, issue.id)) {
@@ -144,10 +147,14 @@ async function importIssue(
     type: normalizeType(issue.issue_type),
   });
 
-  await addWorkLabel({ ...context(options), id: created.id, label: `bd:${issue.id}` });
+  await addWorkLabel({
+    ...context(options),
+    id: created.id,
+    label: `import-source:${issue.id}`,
+  });
 
   const noteLines = [
-    `Imported from Beads issue ${issue.id}.`,
+    `Imported from external issue ${issue.id}.`,
     issue.acceptance_criteria ? `Acceptance criteria: ${issue.acceptance_criteria}` : undefined,
     issue.owner ? `Owner: ${issue.owner}` : undefined,
     issue.close_reason ? `Close reason: ${issue.close_reason}` : undefined,

@@ -1,4 +1,4 @@
-# Complete the essential Beads cutover with conflict-safe work aggregates
+# Complete the essential work-tracking cutover with conflict-safe work aggregates
 
 ## Status
 
@@ -8,7 +8,7 @@ Accepted July 13, 2026.
 
 Cairn can capture and update work, but it cannot yet replace the agent workflow of finding ready work, claiming it atomically, coordinating through structure and blockers, and closing it with durable history. Existing mutations read an item before writing it without a revision predicate, and a claim may overwrite another assignee.
 
-ADR 0006 already fixes hierarchy as an arbitrary-depth, single-parent project forest that is separate from blocking dependencies. This decision completes the minimum work-tracking contract needed for Beads cutover without importing Beads' broader workflow engine or Dolt synchronization model.
+ADR 0006 already fixes hierarchy as an arbitrary-depth, single-parent project forest that is separate from blocking dependencies. This decision completes the minimum work-tracking contract needed for the cutover from an external issue tracker without importing that tracker's broader workflow engine or distributed sync model.
 
 ## Decision
 
@@ -47,11 +47,11 @@ ADR 0006 already fixes hierarchy as an arbitrary-depth, single-parent project fo
 
 ### Explicit deferrals
 
-The essential cutover does not include exact Beads CLI or JSON compatibility, Dolt history or remote database merging, generic or cross-project relation types, gates, molecules, convoys, wisps, defer or due dates, estimates, arbitrary metadata, duplicate and hygiene reports, external-service integrations, bulk graph imports, or comment editing and deletion.
+The essential cutover does not include exact compatibility with any specific external tool's CLI or JSON format, distributed history or remote database merging, generic or cross-project relation types, gates, molecules, convoys, wisps, defer or due dates, estimates, arbitrary metadata, duplicate and hygiene reports, external-service integrations, bulk graph imports, or comment editing and deletion.
 
 ## Consequences
 
-- Agents can safely select, claim, coordinate, and finish local work without Beads, including under competing processes.
+- Agents can safely select, claim, coordinate, and finish local work without an external issue tracker, including under competing processes.
 - The work domain gains several SQLite-specific invariants and recursive queries; they remain behind domain-owned repository ports and may use explicit SQL under ADR 0007.
 - UUID prefixes improve interactive use without weakening canonical identity, but scripts must persist full IDs and handle typed conflicts.
-- Sharing and merging work databases between machines remains a later operations problem rather than an implicit promise of the Beads replacement.
+- Sharing and merging work databases between machines remains a later operations problem rather than an implicit promise of the issue-tracker replacement.

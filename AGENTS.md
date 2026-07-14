@@ -1,6 +1,6 @@
 # Cairn agent instructions
 
-Cairn is a local-first CLI that will replace essential Beads, Engram, and `agents-context` workflows with one deterministic SQLite system.
+Cairn is a local-first CLI that will replace essential work-tracking, memory, and context-search workflows currently handled by external tools with one deterministic SQLite system.
 
 ## Start here
 

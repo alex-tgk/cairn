@@ -1,4 +1,4 @@
-# Complete the essential Engram cutover with topic-addressable durable memory
+# Complete the essential memory cutover with topic-addressable durable memory
 
 ## Status
 
@@ -6,9 +6,9 @@ Accepted July 13, 2026.
 
 ## Context
 
-Cairn replaces Beads and `agents-context` workflows in Slices 2 and 4, but agents still depend on Engram to save durable observations, evolve a topic over time, and recover prior context deterministically. Engram's real contract, confirmed against the `engram` CLI and the `engram-protocol` skill, is narrower than the full product brief: a save with type, scope, optional topic key, and content; a search; a context primer; and a timeline around a saved observation.
+Cairn replaces essential issue-tracking and context-search workflows in Slices 2 and 4, but agents still depend on an external memory tool to save durable observations, evolve a topic over time, and recover prior context deterministically. That tool's real contract, confirmed against its CLI and its own protocol documentation, is narrower than the full product brief: a save with type, scope, optional topic key, and content; a search; a context primer; and a timeline around a saved observation.
 
-This decision fixes the essential memory contract Cairn must satisfy before Engram can be retired, and defers non-essential Engram surface area explicitly so later slices do not silently reintroduce scope creep.
+This decision fixes the essential memory contract Cairn must satisfy before the prior memory tool can be retired, and defers non-essential surface area from that tool explicitly so later slices do not silently reintroduce scope creep.
 
 ## Decision
 
@@ -16,7 +16,7 @@ This decision fixes the essential memory contract Cairn must satisfy before Engr
 
 - Reserve migration 5 for the memory domain. Add a `memories` table and a `memory_events` audit table, mirroring the work domain's aggregate-plus-event-log shape from ADR 0008.
 - A memory belongs to exactly one scope: `project` (has a `project_id`) or `personal` (`project_id` is `NULL`). Scope is fixed at creation and never changes.
-- A memory has a `type` from a closed set matching Engram's actual usage: `decision`, `architecture`, `discovery`, `pattern`, `bugfix`, `config`, `preference`, `session_summary`.
+- A memory has a `type` from a closed set matching the prior memory tool's actual usage: `decision`, `architecture`, `discovery`, `pattern`, `bugfix`, `config`, `preference`, `session_summary`.
 - A memory has an optional, stable `topic` key (for example `architecture/auth-model`). Topic keys are scoped to `(scope, project_id)`; the same key in different scopes or projects addresses different memories.
 - Every actual mutation increments an integer `revision` and inserts exactly one `memory_events` row with that revision in the same transaction, matching the work domain's audit pattern.
 - Memories participate in the shared `search_entries` FTS projection (`entity_kind = 'memory'`) with title and content as body and type/topic/scope as tags, kept transactionally synchronized.
@@ -34,7 +34,7 @@ This decision fixes the essential memory contract Cairn must satisfy before Engr
 
 ### Essential command surface
 
-- `memory save <title> <content>` with `--type`, `--scope` (default `project`), `--project`, and `--topic` accepts the same shape as `engram save`.
+- `memory save <title> <content>` with `--type`, `--scope` (default `project`), `--project`, and `--topic` accepts the same shape as the prior memory tool's save command.
 - `memory show <id>` returns one memory by canonical ID or unambiguous project-scoped/personal-scoped ID prefix, matching the work domain's reference resolution from ADR 0008.
 - `memory list` supports filtering by `type`, `scope`, `topic`, and `project`, with a result limit, in deterministic order.
 - `memory search <query>` performs FTS5 search across title and content with the same deterministic ranking and tie-breakers used by the existing search projection.
@@ -42,11 +42,11 @@ This decision fixes the essential memory contract Cairn must satisfy before Engr
 
 ### Explicit deferrals
 
-This decision defers memory relations, timeline context around a specific memory, pin/archive state, session-summary-specific listing, and the `context` primer command to a follow-up work unit stacked on this one. It does not include automatic memory generation, summarization, cross-machine sync, or Engram's MCP-only prompt capture, none of which are part of Cairn's deterministic core per ADR 0002.
+This decision defers memory relations, timeline context around a specific memory, pin/archive state, session-summary-specific listing, and the `context` primer command to a follow-up work unit stacked on this one. It does not include automatic memory generation, summarization, cross-machine sync, or the prior memory tool's MCP-only prompt capture, none of which are part of Cairn's deterministic core per ADR 0002.
 
 ## Consequences
 
-- Agents gain a durable, queryable place to save and recover decisions, discoveries, fixes, conventions, and preferences without Engram, once the deferred relation and timeline work lands.
+- Agents gain a durable, queryable place to save and recover decisions, discoveries, fixes, conventions, and preferences without the prior memory tool, once the deferred relation and timeline work lands.
 - The topic-upsert rule gives agents an explicit way to evolve a running memory (an architecture decision, a preference) without manual lookups or duplicate rows, matching existing agent workflow habits.
 - Memory reuses the audit-event and search-projection patterns already proven by the work domain, reducing the risk of introducing a second inconsistent persistence style.
-- Deferring relations and timeline keeps the first memory slice reviewable and testable in isolation, at the cost of temporarily incomplete Engram parity.
+- Deferring relations and timeline keeps the first memory slice reviewable and testable in isolation, at the cost of temporarily incomplete parity with the prior memory tool.

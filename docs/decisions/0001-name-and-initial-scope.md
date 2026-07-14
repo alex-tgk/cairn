@@ -6,7 +6,7 @@ Accepted July 10, 2026; Phase 1 boundary clarified July 11, 2026.
 
 ## Context
 
-The project began in a placeholder directory named `brainstorm`. The local agent workflow divides essential continuity across Beads, Engram, and `agents-context`.
+The project began in a placeholder directory named `brainstorm`. The local agent workflow divides essential continuity across an external issue tracker, an external memory tool, and prior local-context tooling.
 
 ## Decision
 

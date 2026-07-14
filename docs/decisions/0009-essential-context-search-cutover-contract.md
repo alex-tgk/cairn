@@ -1,4 +1,4 @@
-# Replace essential agents-context workflows with scoped incremental context
+# Replace essential context-search workflows with scoped incremental context
 
 ## Status
 
@@ -6,7 +6,7 @@ Accepted July 13, 2026.
 
 ## Context
 
-The current `agents-context` tool provides useful local documentation lookup, but its implementation is a destructive global rebuild. A build discovers repositories under one development root, mixes local files with generated project cards, Contentful network content, and an Engram export, then drops and recreates one SQLite document index. Search is global OR-only FTS without project or workspace scope, a stable tie-break, freshness status, or JSON output. The primer is a shell wrapper over three failure-swallowing global searches plus direct Engram calls.
+The prior context-search tooling provides useful local documentation lookup, but its implementation is a destructive global rebuild. A build discovers repositories under one development root, mixes local files with generated project cards, Contentful network content, and an export from an external memory tool, then drops and recreates one SQLite document index. Search is global OR-only FTS without project or workspace scope, a stable tie-break, freshness status, or JSON output. The primer is a shell wrapper over three failure-swallowing global searches plus direct calls to that external memory tool.
 
 Cairn already identifies a logical project with `.cairn/project.toml` and records every physical checkout, clone, moved directory, and worktree separately. The context replacement must use that identity, remain deterministic and model-independent under ADR 0002, and share the database without rebuilding work or memory data.
 
@@ -21,10 +21,10 @@ Cairn already identifies a logical project with `.cairn/project.toml` and record
 
 | Existing intent | Cairn intent |
 | --- | --- |
-| `agents-context build ~/dev` | Run `cairn init` once in each wanted repository, then `cairn context refresh --all`. |
-| `agents-context search "<query>"` | Use `cairn context search "<query>"` for the current project or add `--all` for registered projects. |
-| `agents-context stats` | Use `cairn context status`, with `--all` for the registered-project inventory. |
-| `agents-context-prime "$PWD" "<question>"` | Use `cairn context prime "<question>"` from the project or pass `--path`. |
+| Global build over a development root | Run `cairn init` once in each wanted repository, then `cairn context refresh --all`. |
+| Global search over a query | Use `cairn context search "<query>"` for the current project or add `--all` for registered projects. |
+| Global stats | Use `cairn context status`, with `--all` for the registered-project inventory. |
+| Directory-scoped primer over a question | Use `cairn context prime "<question>"` from the project or pass `--path`. |
 | Destructive rebuild as the normal update | Use incremental `refresh`; reserve `rebuild` for an explicit forced re-read and projection repair. |
 
 ### Source configuration and safe discovery
@@ -52,7 +52,7 @@ Cairn already identifies a logical project with `.cairn/project.toml` and record
 - Terms use OR semantics for recall. Context results use weighted BM25 with title `10`, body `1`, tags `5`, and source path `4`, followed by deterministic title, source-path, and entity-ID tie-breaks.
 - Entity kind, project, and workspace filters apply before the result limit. Results include typed project, workspace, source, document, relative-path, tag, matched-term, and fixed-marker snippet data. The raw numeric BM25 score is an implementation detail.
 - `context prime` composes project identity, index status, deterministic local project metadata, commands and setup context, and question-specific results in a stable section order.
-- Prime does not automatically refresh and never makes hidden model, embedding, network, Engram, or LightRAG calls. A missing or known-stale index produces an explicit warning and the exact refresh command.
+- Prime does not automatically refresh and never makes hidden model, embedding, network, external memory tool, or LightRAG calls. A missing or known-stale index produces an explicit warning and the exact refresh command.
 
 ### Output and failure principles
 
@@ -63,7 +63,7 @@ Cairn already identifies a logical project with `.cairn/project.toml` and record
 
 ### Explicit deferrals
 
-The essential cutover does not include exact `agents-context` CLI or output compatibility, implicit discovery or initialization of arbitrary repositories under `~/dev`, Contentful or other web crawling, duplicate Engram ingestion, LightRAG card exports, embeddings, vector or semantic search, inference, a daemon or filesystem watcher, automatic refresh during prime, cloud synchronization, or code intelligence already provided by Serena and codebase-memory.
+The essential cutover does not include exact CLI or output compatibility with the prior context-search tooling, implicit discovery or initialization of arbitrary repositories under `~/dev`, Contentful or other web crawling, duplicate ingestion from an external memory tool, LightRAG card exports, embeddings, vector or semantic search, inference, a daemon or filesystem watcher, automatic refresh during prime, cloud synchronization, or code intelligence already provided by Serena and codebase-memory.
 
 ## Consequences
 
@@ -71,4 +71,4 @@ The essential cutover does not include exact `agents-context` CLI or output comp
 - Directory moves and parallel worktrees no longer depend on absolute paths as document identity, but each wanted repository must first be registered with Cairn.
 - Incremental hashes and immutable versions make refresh explainable and cheap for unchanged content, at the cost of additional schema and lifecycle rules.
 - Raw FTS5 queries, triggers, and projection repair remain parameterized SQLite-specific infrastructure under ADR 0007.
-- The existing `agents-context`, Engram, and LightRAG tools remain separate during migration; the new context commands do not silently invoke them.
+- The prior context-search tooling, the prior memory tool, and LightRAG remain separate during migration; the new context commands do not silently invoke them.
