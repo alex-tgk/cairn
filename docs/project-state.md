@@ -11,7 +11,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 106 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 109 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -95,27 +95,35 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   single-project only
 - Slice 4's search/prime CLI surface follows ADR 0009's exit code mapping
   (0 success including empty results, 2 invalid query/limit/scope)
+- New `search` domain (`src/search/`): a read-only projection over the
+  shared `search_entries`/`search_entries_fts` table, independent of the
+  work/memory/context domain modules per the architecture's "search is a
+  read-only projection, not a source model" rule
+- `cairn search "<query>"` unified cross-domain search spanning
+  `work_item`, `memory`, and `context_document` entity kinds in one
+  weighted-BM25 ranked query (same title/body/tags/source-path weights as
+  context search), with `--kind <work|memory|context>` filtering
+  (repeatable), `--all`/`--path` scope selection, and the same safe
+  literal-term query parsing and exit-code contract as `context search`
 
 ## Not implemented
 
 - Context source configuration CLI commands (add/list/remove sources)
-- Unified cross-domain search (work + memory + context in one query)
 - Beads and Engram import
 - Backup and restore commands
 - Prebuilt release executables, Homebrew bottles, and macOS signing/notarization
 
 ## Next work slice
 
-Slice 4 (context and unified search)'s per-domain context CLI is complete:
-`cairn context refresh`, `rebuild`, `status`, `search`, and `prime` are all
-wired to the migration-4 context-indexing domain per ADR 0009. Remaining
-Slice 4 work:
+Slice 4 (context and unified search) is complete: `cairn context refresh`,
+`rebuild`, `status`, `search`, `prime`, and the cross-domain `cairn search`
+are all wired per ADR 0009 and the architecture's search-domain rules.
+Candidate next work:
 
-1. Decide whether a true unified cross-domain search command (spanning work,
-   memory, and context in one query/ranking) is still in scope for this
-   slice or deferred to a later slice
-2. Context source configuration CLI commands (add/list/remove sources),
+1. Context source configuration CLI commands (add/list/remove sources),
    currently only configurable via `.cairn/context.toml`
+2. Slice 5 (migration and operations): Beads and Engram import, backup and
+   restore
 3. Tests, documentation, and migration implications in the same work units
 
 ## Durable decisions

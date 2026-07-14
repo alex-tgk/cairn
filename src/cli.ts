@@ -91,6 +91,13 @@ import type {
   ContextPrimeView,
   ContextSearchResultView,
 } from "./context/context-service.ts";
+import { SEARCH_ENTITY_KINDS, type SearchEntityKind } from "./search/search-repository.ts";
+import { parseSearchLimit, SearchQueryValidationError } from "./search/search-query.ts";
+import type { SearchResultView } from "./search/search-service.ts";
+import {
+  SearchScopeValidationError,
+  searchWorkspace,
+} from "./search/search-workspace-service.ts";
 
 const HELP = `Cairn ${packageJson.version}
 
@@ -159,6 +166,8 @@ Usage:
   cairn context status [--all] [--path <path>] [--json]
   cairn context search <query> [--all] [--path <path>] [--limit <n>] [--json]
   cairn context prime <question> [--path <path>] [--limit <n>] [--json]
+  cairn search <query> [--all] [--path <path>] [--kind <kind>]
+               [--limit <n>] [--json]
   cairn --version
   cairn --help
 `;
@@ -890,6 +899,89 @@ function printContextPrimeView(
   }
 }
 
+const SEARCH_KIND_ALIASES: Readonly<Record<string, SearchEntityKind>> = {
+  context: "context_document",
+  context_document: "context_document",
+  memory: "memory",
+  work: "work_item",
+  work_item: "work_item",
+};
+
+function parseSearchKinds(
+  arguments_: readonly string[],
+): readonly SearchEntityKind[] | undefined {
+  const values = optionValues(arguments_, "--kind");
+  if (values.length === 0) {
+    return undefined;
+  }
+  return values.map((value) => {
+    const kind = SEARCH_KIND_ALIASES[value];
+    if (kind === undefined) {
+      throw new SearchQueryValidationError(
+        `Unknown --kind "${value}"; expected one of ${SEARCH_ENTITY_KINDS.join(", ")}`,
+      );
+    }
+    return kind;
+  });
+}
+
+function printSearchResult(result: SearchResultView, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (result.matches.length === 0) {
+    console.log(`No matches for: ${result.query}`);
+    return;
+  }
+  for (const match of result.matches) {
+    const scope =
+      match.workspaceId === null
+        ? match.projectId
+        : `${match.projectId}/${match.workspaceId}`;
+    const label = match.sourcePath ?? match.title;
+    console.log(`[${match.entityKind}] ${label} (${match.entityId}) [${scope}]`);
+    console.log(`  tags: ${match.tags.join(", ") || "(none)"}`);
+    console.log(`  matched: ${match.matchedTerms.join(", ") || "(none)"}`);
+    console.log(`  ${match.snippet}`);
+  }
+}
+
+async function runSearchCommand(
+  arguments_: readonly string[],
+  json: boolean,
+): Promise<number> {
+  const [query] = arguments_;
+  const explicitPath = optionValue(arguments_, "--path");
+  const options = {
+    all: hasFlag(arguments_, "--all"),
+    explicitPath: explicitPath !== undefined,
+    path: explicitPath ?? process.cwd(),
+  };
+
+  try {
+    printSearchResult(
+      await searchWorkspace(
+        options,
+        query ?? "",
+        parseSearchKinds(arguments_),
+        parseSearchLimit(optionValue(arguments_, "--limit")),
+      ),
+      json,
+    );
+    return 0;
+  } catch (error) {
+    if (
+      error instanceof SearchScopeValidationError ||
+      error instanceof SearchQueryValidationError
+    ) {
+      printCliError(error, json);
+      return 2;
+    }
+    throw error;
+  }
+}
+
 async function runContextCommand(
   arguments_: readonly string[],
   json: boolean,
@@ -1155,6 +1247,10 @@ export async function runCli(arguments_: readonly string[]): Promise<number> {
     return await runContextCommand(commandArguments, json);
   }
 
+  if (command === "search") {
+    return await runSearchCommand(commandArguments, json);
+  }
+
   console.error(`Unknown Cairn command: ${command ?? ""}`);
   console.error(HELP);
   return 2;
@@ -1277,6 +1373,12 @@ function describeCliError(error: unknown): CliError {
     return { code: error.code, details: {}, message: error.message };
   }
   if (error instanceof ContextQueryValidationError) {
+    return { code: error.code, details: {}, message: error.message };
+  }
+  if (
+    error instanceof SearchScopeValidationError ||
+    error instanceof SearchQueryValidationError
+  ) {
     return { code: error.code, details: {}, message: error.message };
   }
   return {
