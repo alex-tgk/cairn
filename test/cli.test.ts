@@ -1298,4 +1298,84 @@ describe("Cairn CLI", () => {
     );
     expect(primeAllRejected.exitCode).toBe(2);
   });
+
+  test("searches across work, memory, and context in one unified query", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    mkdirSync(join(workspace, "docs"));
+    writeFileSync(
+      join(workspace, "docs", "auth.md"),
+      "# Auth\n\nThe auth flow uses refresh tokens.\n",
+    );
+    runCli(["init", workspace, "--json"], dataDirectory);
+    runCli(
+      ["work", "create", "Fix auth flow bug", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    runCli(
+      [
+        "memory",
+        "save",
+        "Auth decision",
+        "We rotate refresh tokens for the auth flow.",
+        "--type",
+        "decision",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    runCli(["context", "refresh", "--path", workspace, "--json"], dataDirectory);
+
+    const result = JSON.parse(
+      runCli(["search", "auth flow", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as { matches: readonly { entityKind: string }[]; termCount: number };
+    expect(result.termCount).toBe(2);
+    expect(result.matches.map((match) => match.entityKind).sort()).toEqual([
+      "context_document",
+      "memory",
+      "work_item",
+    ]);
+
+    const kindFiltered = JSON.parse(
+      runCli(
+        ["search", "auth", "--kind", "work", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { matches: readonly { entityKind: string }[] };
+    expect(kindFiltered.matches).toHaveLength(1);
+    expect(kindFiltered.matches[0]?.entityKind).toBe("work_item");
+
+    const invalidKind = runCli(
+      ["search", "auth", "--kind", "bogus", "--path", workspace],
+      dataDirectory,
+    );
+    expect(invalidKind.exitCode).toBe(2);
+
+    const invalidQuery = runCli(
+      ["search", "!!!", "--path", workspace],
+      dataDirectory,
+    );
+    expect(invalidQuery.exitCode).toBe(2);
+
+    const invalidLimit = runCli(
+      ["search", "auth", "--path", workspace, "--limit", "0"],
+      dataDirectory,
+    );
+    expect(invalidLimit.exitCode).toBe(2);
+
+    const noMatches = JSON.parse(
+      runCli(["search", "nonexistentterm", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as { matches: readonly unknown[] };
+    expect(noMatches.matches).toHaveLength(0);
+
+    const allProjects = JSON.parse(
+      runCli(["search", "auth", "--all", "--json"], dataDirectory).stdout,
+    ) as { matches: readonly unknown[] };
+    expect(allProjects.matches.length).toBeGreaterThan(0);
+  });
 });

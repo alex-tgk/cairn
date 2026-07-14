@@ -74,6 +74,8 @@ bun run build
 ./dist/cairn context search "auth flow"
 ./dist/cairn context search "auth flow" --all --limit 5
 ./dist/cairn context prime "how does auth work"
+./dist/cairn search "auth flow"
+./dist/cairn search "auth flow" --kind work --kind memory
 ./dist/cairn doctor
 ```
 
@@ -110,7 +112,7 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | Memory pin/archive state, session-summary listing, and context primer | Implemented |
 | Local context domain, discovery, and incremental indexing | Implemented |
 | Context CLI (`refresh`, `rebuild`, `status`, `search`, `prime`) | Implemented |
-| Unified cross-domain search | Planned |
+| Unified cross-domain search (`cairn search`) | Implemented |
 | Beads and Engram migration | Planned |
 
 ## Documentation

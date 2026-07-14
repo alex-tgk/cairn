@@ -10,7 +10,7 @@ The roadmap is ordered by dependency and risk reduction rather than dates.
 | 1. Project and SQLite foundation | Rename-safe identity and executable CLI | Implemented locally |
 | 2. Work tracking | Essential Beads workflows | Implemented locally |
 | 3. Durable memory | Essential Engram workflows | In progress |
-| 4. Context and unified search | Essential `agents-context` workflows | Planned |
+| 4. Context and unified search | Essential `agents-context` workflows | Implemented locally |
 | 5. Migration and operations | Safe cutover, backup, and recovery | Planned |
 | 6. Distribution | Signed releases and Homebrew tap | Planned |
 
@@ -96,6 +96,10 @@ Current progress:
       per ADR 0009
 - [x] `cairn context prime "<question>"` composing project identity, index
       status, and question-specific results
+- [x] `cairn search "<query>"` unified read-only projection across work,
+      memory, and context entity kinds, sharing the same weighted BM25
+      ranking, safe query parsing, and snippet contract, with `--kind`
+      filtering and `--all`/`--path` scope selection
 
 See [ADR 0009](decisions/0009-essential-agents-context-cutover-contract.md)
 for the full CLI/behavior contract.
