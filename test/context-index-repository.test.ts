@@ -398,4 +398,83 @@ describe("SQLite context index repository", () => {
     });
     await database.close();
   });
+
+  test("searches context documents with weighted ranking, scope filtering, and snippets", async () => {
+    const { database, repository } = createHarness(
+      ["source-1", "run-1", "document-a", "document-b", "document-c"],
+      [
+        "2026-07-13T13:00:00.000Z",
+        "2026-07-13T14:00:00.000Z",
+        "2026-07-13T14:01:00.000Z",
+      ],
+    );
+    const source = await repository.upsertSource({
+      loadedConfig: loadedConfig(),
+      projectId: PROJECT_ID,
+      source: SOURCE,
+    });
+    await repository.applyIndex({
+      files: [
+        discoveredFile(
+          "auth.md",
+          "The auth flow uses refresh tokens rotated on every login.",
+          "hash-auth",
+        ),
+        discoveredFile(
+          "deploy.md",
+          "Deployment uses GitLab CI with manual production gates.",
+          "hash-deploy",
+        ),
+      ],
+      mode: "rebuild",
+      projectId: PROJECT_ID,
+      skippedCount: 0,
+      sourceId: source.id,
+      workspaceId: WORKSPACE_ID,
+    });
+
+    const matches = await repository.searchDocuments({
+      ftsQuery: '"auth" OR "flow"',
+      limit: 20,
+      scopes: [{ projectId: PROJECT_ID, workspaceId: WORKSPACE_ID }],
+      terms: ["auth", "flow"],
+    });
+
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({
+      matchedTerms: ["auth", "flow"],
+      projectId: PROJECT_ID,
+      relativePath: "auth.md",
+      workspaceId: WORKSPACE_ID,
+    });
+    expect(matches[0]?.snippet).toContain("»");
+
+    const noMatches = await repository.searchDocuments({
+      ftsQuery: '"nonexistentterm"',
+      limit: 20,
+      scopes: [{ projectId: PROJECT_ID, workspaceId: WORKSPACE_ID }],
+      terms: ["nonexistentterm"],
+    });
+    expect(noMatches).toHaveLength(0);
+
+    const outOfScope = await repository.searchDocuments({
+      ftsQuery: '"auth"',
+      limit: 20,
+      scopes: [
+        { projectId: "018f4f32-95d6-7d6d-9f54-000000000000", workspaceId: WORKSPACE_ID },
+      ],
+      terms: ["auth"],
+    });
+    expect(outOfScope).toHaveLength(0);
+
+    const limited = await repository.searchDocuments({
+      ftsQuery: '"auth" OR "deployment"',
+      limit: 1,
+      scopes: [{ projectId: PROJECT_ID, workspaceId: WORKSPACE_ID }],
+      terms: ["auth", "deployment"],
+    });
+    expect(limited).toHaveLength(1);
+
+    await database.close();
+  });
 });

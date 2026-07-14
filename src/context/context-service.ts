@@ -1,5 +1,9 @@
 import { resolve } from "node:path";
 
+import {
+  buildSafeFtsMatchExpression,
+  parseContextQueryTerms,
+} from "./context-query.ts";
 import { loadContextConfig } from "./context-config.ts";
 import { discoverContextFiles } from "./context-discovery.ts";
 import type {
@@ -9,6 +13,8 @@ import type {
   ContextIndexRunRecord,
   ContextIndexRunStatus,
   ContextIndexStatus,
+  ContextSearchMatch,
+  ContextSearchScope,
 } from "./context-index-repository.ts";
 
 export type IndexContextInput = Readonly<{
@@ -233,5 +239,103 @@ export async function getContextIndexStatus(
     state: aggregateIndexState(sources),
     workspaceId: input.workspaceId,
     workspacePath: resolve(input.workspacePath),
+  };
+}
+
+const DEFAULT_SEARCH_LIMIT = 10;
+const DEFAULT_PRIME_LIMIT = 5;
+
+export type ContextSearchInput = Readonly<{
+  limit?: number | undefined;
+  query: string;
+  repository: ContextIndexRepository;
+  scopes: readonly ContextSearchScope[];
+}>;
+
+export type ContextSearchResultView = Readonly<{
+  matches: readonly ContextSearchMatch[];
+  query: string;
+  termCount: number;
+}>;
+
+export async function searchContext(
+  input: ContextSearchInput,
+): Promise<ContextSearchResultView> {
+  const terms = parseContextQueryTerms(input.query);
+  const matches = await input.repository.searchDocuments({
+    ftsQuery: buildSafeFtsMatchExpression(terms),
+    limit: input.limit ?? DEFAULT_SEARCH_LIMIT,
+    scopes: input.scopes,
+    terms,
+  });
+  return { matches, query: input.query, termCount: terms.length };
+}
+
+export type ContextPrimeProjectIdentity = Readonly<{
+  name: string;
+  projectId: string;
+  workspaceId: string;
+  workspacePath: string;
+}>;
+
+export type ContextPrimeInput = Readonly<{
+  limit?: number | undefined;
+  projectIdentity: ContextPrimeProjectIdentity;
+  question: string;
+  repository: ContextIndexRepository;
+}>;
+
+export type ContextPrimeView = Readonly<{
+  indexStatus: ContextIndexStatusSummary;
+  projectIdentity: ContextPrimeProjectIdentity;
+  question: string;
+  recommendedCommand: string | null;
+  results: readonly ContextSearchMatch[];
+  warnings: readonly string[];
+}>;
+
+export async function primeContext(
+  input: ContextPrimeInput,
+): Promise<ContextPrimeView> {
+  const indexStatus = await getContextIndexStatus({
+    projectId: input.projectIdentity.projectId,
+    repository: input.repository,
+    workspaceId: input.projectIdentity.workspaceId,
+    workspacePath: input.projectIdentity.workspacePath,
+  });
+
+  const warnings: string[] = [];
+  let recommendedCommand: string | null = null;
+  if (indexStatus.state === "not_indexed") {
+    warnings.push(
+      "Context index has never been built for this workspace.",
+    );
+    recommendedCommand = "cairn context refresh";
+  } else if (indexStatus.state === "refresh_required") {
+    warnings.push(
+      "Context index has a failed or partial run and may be stale.",
+    );
+    recommendedCommand = "cairn context refresh";
+  }
+
+  const search = await searchContext({
+    limit: input.limit ?? DEFAULT_PRIME_LIMIT,
+    query: input.question,
+    repository: input.repository,
+    scopes: [
+      {
+        projectId: input.projectIdentity.projectId,
+        workspaceId: input.projectIdentity.workspaceId,
+      },
+    ],
+  });
+
+  return {
+    indexStatus,
+    projectIdentity: input.projectIdentity,
+    question: input.question,
+    recommendedCommand,
+    results: search.matches,
+    warnings,
   };
 }

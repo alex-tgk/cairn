@@ -76,10 +76,37 @@ export type ListContextIndexStatusInput = Readonly<{
   workspaceId: string;
 }>;
 
+export type ContextSearchScope = Readonly<{
+  projectId: string;
+  workspaceId: string;
+}>;
+
+export type SearchContextDocumentsInput = Readonly<{
+  ftsQuery: string;
+  limit: number;
+  scopes: readonly ContextSearchScope[];
+  terms: readonly string[];
+}>;
+
+export type ContextSearchMatch = Readonly<{
+  documentId: string;
+  matchedTerms: readonly string[];
+  projectId: string;
+  relativePath: string;
+  snippet: string;
+  sourceId: string;
+  tags: readonly string[];
+  title: string;
+  workspaceId: string;
+}>;
+
 export interface ContextIndexRepository {
   applyIndex(input: ApplyContextIndexInput): Promise<ContextIndexRunRecord>;
   listStatus(
     input: ListContextIndexStatusInput,
   ): Promise<readonly ContextIndexStatus[]>;
+  searchDocuments(
+    input: SearchContextDocumentsInput,
+  ): Promise<readonly ContextSearchMatch[]>;
   upsertSource(input: UpsertContextSourceInput): Promise<ContextSourceRecord>;
 }

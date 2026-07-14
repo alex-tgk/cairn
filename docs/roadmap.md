@@ -92,9 +92,9 @@ Current progress:
       project/workspace with `--all`
 - [x] `cairn context status` reporting per-source `not_indexed` / `indexed` /
       `refresh_required` state, document counts, and the last index run
-- [ ] `cairn context search "<query>"` with weighted BM25 ranking and snippets
+- [x] `cairn context search "<query>"` with weighted BM25 ranking and snippets
       per ADR 0009
-- [ ] `cairn context prime "<question>"` composing project identity, index
+- [x] `cairn context prime "<question>"` composing project identity, index
       status, and question-specific results
 
 See [ADR 0009](decisions/0009-essential-agents-context-cutover-contract.md)

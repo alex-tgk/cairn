@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  sql,
   type Kysely,
   type Selectable,
 } from "kysely";
@@ -19,14 +20,27 @@ import type {
   ContextIndexRunCounts,
   ContextIndexRunRecord,
   ContextIndexStatus,
+  ContextSearchMatch,
   ContextSourceRecord,
   ListContextIndexStatusInput,
+  SearchContextDocumentsInput,
   UpsertContextSourceInput,
 } from "./context-index-repository.ts";
 
 type ContextSourceRow = Selectable<ContextSourceTable>;
 type ContextDocumentRow = Selectable<ContextDocumentTable>;
 type ContextIndexRunRow = Selectable<ContextIndexRunTable>;
+
+type ContextSearchRow = Readonly<{
+  body: string;
+  document_id: string;
+  project_id: string;
+  relative_path: string;
+  source_id: string;
+  tags: string;
+  title: string;
+  workspace_id: string;
+}>;
 
 type RepositoryFactories = Readonly<{
   idFactory: () => string;
@@ -65,6 +79,66 @@ function parseStringArray(value: string, field: string): readonly string[] {
     throw new Error(`Invalid ${field} JSON`);
   }
   return parsed;
+}
+
+const SNIPPET_MARKER_START = "»";
+const SNIPPET_MARKER_END = "«";
+const SNIPPET_RADIUS = 60;
+
+function buildFixedMarkerSnippet(
+  body: string,
+  terms: readonly string[],
+): string {
+  const lowerBody = body.toLowerCase();
+  let matchIndex = -1;
+  let matchLength = 0;
+  for (const term of terms) {
+    const index = lowerBody.indexOf(term.toLowerCase());
+    if (index !== -1 && (matchIndex === -1 || index < matchIndex)) {
+      matchIndex = index;
+      matchLength = term.length;
+    }
+  }
+
+  if (matchIndex === -1) {
+    return body.slice(0, SNIPPET_RADIUS * 2).trim();
+  }
+
+  const start = Math.max(0, matchIndex - SNIPPET_RADIUS);
+  const end = Math.min(
+    body.length,
+    matchIndex + matchLength + SNIPPET_RADIUS,
+  );
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < body.length ? "…" : "";
+  return `${prefix}${body.slice(start, matchIndex)}${SNIPPET_MARKER_START}${body.slice(
+    matchIndex,
+    matchIndex + matchLength,
+  )}${SNIPPET_MARKER_END}${body.slice(matchIndex + matchLength, end)}${suffix}`;
+}
+
+function mapSearchMatch(
+  row: ContextSearchRow,
+  terms: readonly string[],
+): ContextSearchMatch {
+  const tags = row.tags.split(" ").filter((tag) => tag.length > 0);
+  const haystack =
+    `${row.title} ${row.body} ${row.tags} ${row.relative_path}`.toLowerCase();
+  const matchedTerms = terms.filter((term) =>
+    haystack.includes(term.toLowerCase()),
+  );
+
+  return {
+    documentId: row.document_id,
+    matchedTerms,
+    projectId: row.project_id,
+    relativePath: row.relative_path,
+    snippet: buildFixedMarkerSnippet(row.body, terms),
+    sourceId: row.source_id,
+    tags,
+    title: row.title,
+    workspaceId: row.workspace_id,
+  };
 }
 
 function mapSource(row: ContextSourceRow): ContextSourceRecord {
@@ -263,6 +337,46 @@ export class SqliteContextIndexRepository implements ContextIndexRepository {
       statuses.push(await this.sourceStatus(source, input.workspaceId));
     }
     return statuses;
+  }
+
+  async searchDocuments(
+    input: SearchContextDocumentsInput,
+  ): Promise<readonly ContextSearchMatch[]> {
+    if (input.scopes.length === 0) {
+      return [];
+    }
+
+    const scopeClauses = input.scopes.map(
+      (scope) =>
+        sql`(search_entries.project_id = ${scope.projectId} AND search_entries.workspace_id = ${scope.workspaceId})`,
+    );
+    const scopeCondition = sql.join(scopeClauses, sql` OR `);
+
+    const rows = await sql<ContextSearchRow>`
+      SELECT
+        search_entries.entity_id AS document_id,
+        search_entries.project_id AS project_id,
+        search_entries.workspace_id AS workspace_id,
+        search_entries.title AS title,
+        search_entries.tags AS tags,
+        search_entries.body AS body,
+        search_entries.source_path AS relative_path,
+        context_documents.source_id AS source_id
+      FROM search_entries_fts
+      JOIN search_entries ON search_entries.id = search_entries_fts.rowid
+      JOIN context_documents ON context_documents.id = search_entries.entity_id
+      WHERE search_entries.entity_kind = 'context_document'
+        AND search_entries_fts MATCH ${input.ftsQuery}
+        AND (${scopeCondition})
+      ORDER BY
+        bm25(search_entries_fts, 10.0, 1.0, 5.0, 4.0),
+        search_entries.title ASC,
+        search_entries.source_path ASC,
+        search_entries.entity_id ASC
+      LIMIT ${input.limit}
+    `.execute(this.database.queries);
+
+    return rows.rows.map((row) => mapSearchMatch(row, input.terms));
   }
 
   private async requireScope(
