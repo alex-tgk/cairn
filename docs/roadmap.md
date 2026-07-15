@@ -108,15 +108,24 @@ for the full CLI/behavior contract.
 
 Implement read-only inventories of prior external tools, idempotent dry-run imports, count/checksum reports, backup, restore, export, and recovery guidance.
 
-- [x] An internal import script performs an idempotent dry-run/real import of
-      flat issue-tracker export fields (title, description, status, priority,
-      type, assignee, close reason) into work items, tagged with a label
-      derived from the original issue ID for re-run detection, per ADR 0008's
-      exclusion of bulk graph imports
-- [x] An internal import script performs an idempotent dry-run/real import of
-      memory-tool export observations into memories, addressed by
-      `import/<source>/<sync_id>` topic keys so re-imports upsert in place per
-      ADR 0010's topic-upsert rule
+- [x] `cairn import work-items <file> [--deps <file>]` performs an idempotent
+      dry-run/real import of flat issue-tracker export fields (title,
+      description, status, priority, type, assignee, close reason) into work
+      items, tagged with a label derived from the original issue ID for
+      re-run detection, plus an optional dependency-graph second pass that
+      maps parent-child and blocking edges onto Cairn's structural parent and
+      `work dep` models (see ADR 0008's updated deferrals section)
+- [x] `cairn import memories <file> [--project <name>]` performs an
+      idempotent dry-run/real import of memory-tool export observations into
+      memories, addressed by `import/memory/<sync_id>` topic keys so
+      re-imports upsert in place per ADR 0010's topic-upsert rule
+- [x] `cairn import context <file> --project <name>` performs an idempotent
+      dry-run/real import of a local RAG/context tool's document rows into
+      memories, addressed by `import/context/<row-id>` topic keys
+- [x] `cairn setup <all|codex|copilot>` generates a Cairn skill file and
+      idempotently upserts an instructions block into the target agent's
+      global instructions file, so an agent's environment can be pointed at
+      Cairn without hand-editing config files
 - [ ] Count/checksum inventory reports, backup, restore, export, and recovery
       guidance
 

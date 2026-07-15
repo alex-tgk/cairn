@@ -47,7 +47,9 @@ ADR 0006 already fixes hierarchy as an arbitrary-depth, single-parent project fo
 
 ### Explicit deferrals
 
-The essential cutover does not include exact compatibility with any specific external tool's CLI or JSON format, distributed history or remote database merging, generic or cross-project relation types, gates, molecules, convoys, wisps, defer or due dates, estimates, arbitrary metadata, duplicate and hygiene reports, external-service integrations, bulk graph imports, or comment editing and deletion.
+The essential cutover does not include exact compatibility with any specific external tool's CLI or JSON format, distributed history or remote database merging, generic or cross-project relation types, gates, molecules, convoys, wisps, defer or due dates, estimates, arbitrary metadata, duplicate and hygiene reports, external-service integrations, or comment editing and deletion.
+
+Bulk import of parent/child hierarchy and blocking-dependency edges from an external tool's dependency graph *is* in scope and implemented: it maps directly onto the structural parent and `work dep` blocking models already described above. Generic or cross-project relation types found in some external graphs (for example "tracks", "relates_to", "discovered-from", "duplicate", or "supersede" edges) remain out of scope, since Cairn has no equivalent generic relation-type model to receive them.
 
 ## Consequences
 

@@ -76,6 +76,9 @@ bun run build
 ./dist/cairn context prime "how does auth work"
 ./dist/cairn search "auth flow"
 ./dist/cairn search "auth flow" --kind work --kind memory
+./dist/cairn setup all
+./dist/cairn setup codex
+./dist/cairn setup copilot
 ./dist/cairn doctor
 ```
 
@@ -113,7 +116,7 @@ Use `CAIRN_DATA_DIR` to override the platform data directory during development 
 | Local context domain, discovery, and incremental indexing | Implemented |
 | Context CLI (`refresh`, `rebuild`, `status`, `search`, `prime`) | Implemented |
 | Unified cross-domain search (`cairn search`) | Implemented |
-| Data import scripts (internal) | Implemented |
+| Agent setup (`cairn setup`: generates skill files and upserts instructions for Codex and Copilot) | Implemented |
 | Backup, restore, and checksum reports | Planned |
 
 ## Documentation

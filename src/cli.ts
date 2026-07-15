@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import packageJson from "../package.json";
@@ -98,6 +99,17 @@ import {
   SearchScopeValidationError,
   searchWorkspace,
 } from "./search/search-workspace-service.ts";
+import {
+  parseExternalDependencyEdges,
+  parseExternalIssuesJsonl,
+  parseExternalMemoryExport,
+} from "./migration/migration.ts";
+import {
+  importContextEntries,
+  importMemories,
+  importWorkItems,
+} from "./migration/migration-service.ts";
+import { runSetupCommand } from "./setup/setup-service.ts";
 
 const HELP = `Cairn ${packageJson.version}
 
@@ -168,6 +180,7 @@ Usage:
   cairn context prime <question> [--path <path>] [--limit <n>] [--json]
   cairn search <query> [--all] [--path <path>] [--kind <kind>]
                [--limit <n>] [--json]
+  cairn setup <all|codex|copilot> [--home <dir>] [--json]
   cairn --version
   cairn --help
 `;
@@ -1191,6 +1204,79 @@ async function runMemoryCommand(
   throw new Error(`Unknown Cairn memory command: ${action ?? ""}`);
 }
 
+async function runImportCommand(
+  arguments_: readonly string[],
+  json: boolean,
+): Promise<number> {
+  const [action, file] = arguments_;
+  const path = optionValue(arguments_, "--path") ?? process.cwd();
+  const dataDirectory = optionValue(arguments_, "--data-dir");
+  const dryRun = hasFlag(arguments_, "--dry-run");
+  const cairnContext = dataDirectory === undefined
+    ? { path }
+    : { dataDirectory, path };
+
+  if (action === "work-items") {
+    if (file === undefined) {
+      throw new Error("Usage: cairn import work-items <file> [--deps <file>]");
+    }
+    const issues = parseExternalIssuesJsonl(readFileSync(file, "utf8"));
+    const depsFile = optionValue(arguments_, "--deps");
+    const dependencyEdges = depsFile === undefined
+      ? undefined
+      : parseExternalDependencyEdges(readFileSync(depsFile, "utf8"));
+    printResult(
+      await importWorkItems({
+        ...cairnContext,
+        dryRun,
+        issues,
+        ...(dependencyEdges === undefined ? {} : { dependencyEdges }),
+      }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "memories") {
+    if (file === undefined) {
+      throw new Error("Usage: cairn import memories <file> [--project <name>]");
+    }
+    const parsed = parseExternalMemoryExport(readFileSync(file, "utf8"));
+    const project = optionValue(arguments_, "--project");
+    printResult(
+      await importMemories({
+        ...cairnContext,
+        dryRun,
+        observations: parsed.observations ?? [],
+        ...(project === undefined ? {} : { project }),
+      }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "context") {
+    const project = optionValue(arguments_, "--project");
+    if (file === undefined || project === undefined) {
+      throw new Error(
+        "Usage: cairn import context <file> --project <name>",
+      );
+    }
+    printResult(
+      await importContextEntries({
+        ...cairnContext,
+        dryRun,
+        project,
+        sourceDatabasePath: file,
+      }),
+      json,
+    );
+    return 0;
+  }
+
+  throw new Error(`Unknown Cairn import command: ${action ?? ""}`);
+}
+
 export async function runCli(arguments_: readonly string[]): Promise<number> {
   if (arguments_.length === 0 || hasFlag(arguments_, "--help") || hasFlag(arguments_, "-h")) {
     console.log(HELP);
@@ -1249,6 +1335,14 @@ export async function runCli(arguments_: readonly string[]): Promise<number> {
 
   if (command === "search") {
     return await runSearchCommand(commandArguments, json);
+  }
+
+  if (command === "import") {
+    return await runImportCommand(commandArguments, json);
+  }
+
+  if (command === "setup") {
+    return await runSetupCommand(commandArguments, json);
   }
 
   console.error(`Unknown Cairn command: ${command ?? ""}`);

@@ -105,31 +105,47 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   context search), with `--kind <work|memory|context>` filtering
   (repeatable), `--all`/`--path` scope selection, and the same safe
   literal-term query parsing and exit-code contract as `context search`
-- An internal import script imports flat issue-tracker export data (JSONL)
-  into work items through the existing `work-service.ts` public API (no raw
-  SQL), mapping status/priority/type 1:1 where valid Cairn enum values and
-  falling back to `open`/2/`task` otherwise, transitioning claim/close state
-  to match the source tool's status, appending acceptance criteria/owner/close
-  reason as a note, and tagging each item with a label derived from the
-  original issue ID so re-runs skip already-imported issues. Per ADR 0008,
-  dependencies/comments/labels are intentionally excluded (bulk graph import
-  is out of scope)
-- An internal import script imports memory-tool export data (JSON)
-  observations into memories through `memory-service.ts`'s `saveMemory`,
-  using an `import/<source>/<sync_id>` topic key so re-runs upsert the same
-  memory per ADR 0010's topic-upsert rule; maps the source tool's `type` 1:1
-  onto Cairn's `MEMORY_TYPES` where valid, with a documented fallback (an
-  observed `refactor` type, which is outside Cairn's closed set, maps to
-  `pattern`); sessions and prompts are not imported (no Cairn equivalent).
-- An internal import script imports rows from a local RAG/context tool's
-  SQLite document index into memories, filtered to one source project name
-  at a time, using an `import/context/<row-id>` topic key for idempotent
-  re-runs. It maps into the memory domain rather than the context domain,
-  since the source index stores flattened, pre-chunked content without the
-  on-disk file hashes Cairn's context indexer needs for incremental
-  refresh; unrecognized row kinds fall back to the `discovery` memory type.
-  All three internal import scripts were verified against real export data
-  from local repos, including a re-run idempotency check
+- `cairn import work-items <file> [--deps <file>]` imports flat issue-tracker
+  export data (JSONL) into work items through the existing `work-service.ts`
+  public API (no raw SQL), mapping status/priority/type 1:1 where valid
+  Cairn enum values and falling back to `open`/2/`task` otherwise,
+  transitioning claim/close state to match the source tool's status,
+  appending acceptance criteria/owner/close reason as a note, and tagging
+  each item with a label derived from the original issue ID so re-runs skip
+  already-imported issues. An optional `--deps <file>` second pass maps a
+  source tool's dependency-graph export (edges shaped
+  `{issue_id, depends_on_id, type}`) onto Cairn's structural parent
+  (`type: "parent-child"`) and blocking (`type: "blocks"`) models via the
+  existing `setWorkParent`/`addWorkBlocker` service functions; all other
+  edge types are skipped since Cairn has no generic relation-type model
+  (see ADR 0008's updated deferrals section).
+- `cairn import memories <file> [--project <name>]` imports memory-tool
+  export data (JSON) observations into memories through
+  `memory-service.ts`'s `saveMemory`, using an `import/memory/<sync_id>`
+  topic key so re-runs upsert the same memory per ADR 0010's topic-upsert
+  rule; maps the source tool's `type` 1:1 onto Cairn's `MEMORY_TYPES` where
+  valid, with a documented fallback (an observed `refactor` type, which is
+  outside Cairn's closed set, maps to `pattern`); sessions and prompts are
+  not imported (no Cairn equivalent).
+- `cairn import context <file> --project <name>` imports rows from a local
+  RAG/context tool's SQLite document index into memories, filtered to one
+  source project name at a time, using an `import/context/<row-id>` topic
+  key for idempotent re-runs. It maps into the memory domain rather than
+  the context domain, since the source index stores flattened, pre-chunked
+  content without the on-disk file hashes Cairn's context indexer needs for
+  incremental refresh; unrecognized row kinds fall back to the `discovery`
+  memory type.
+  All three `cairn import` subcommands were verified against real export
+  data from local repos, including re-run idempotency and dependency-edge
+  application checks. They live in `src/migration/` and are wired into the
+  CLI, but intentionally excluded from `cairn --help` and public docs, since
+  their option shapes mirror specific external tools' export formats.
+- `cairn setup <all|codex|copilot>` (`src/setup/`) generates a Cairn skill
+  file and idempotently upserts a marker-delimited instructions block into
+  the target agent's global instructions file (`~/.codex/AGENTS.md` for
+  codex, `~/.copilot/copilot-instructions.md` for copilot), so an agent's
+  environment can be pointed at Cairn without hand-editing config files.
+  Supports an overridable `--home <dir>` for testing.
 
 ## Not implemented
 
@@ -143,8 +159,8 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 Slice 4 (context and unified search) is complete: `cairn context refresh`,
 `rebuild`, `status`, `search`, `prime`, and the cross-domain `cairn search`
 are all wired per ADR 0009 and the architecture's search-domain rules.
-Slice 5's flat-field import scripts for prior external tools are done; Candidate next
-work:
+Slice 5's import commands (including dependency-graph import) and the new
+`cairn setup` agent-onboarding command are done. Candidate next work:
 
 1. Context source configuration CLI commands (add/list/remove sources),
    currently only configurable via `.cairn/context.toml`
