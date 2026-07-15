@@ -44,7 +44,7 @@ describe("Cairn CLI", () => {
       createTemporaryDirectory("cairn-cli-data-"),
     );
 
-    expect(result).toEqual({ exitCode: 0, stderr: "", stdout: "0.1.0\n" });
+    expect(result).toEqual({ exitCode: 0, stderr: "", stdout: "0.1.1\n" });
   });
 
   test("initializes a project and reports JSON status", () => {
