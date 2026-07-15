@@ -11,11 +11,13 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 109 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 133 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
-- Platform-specific global data directories and `CAIRN_DATA_DIR`
+- A single home-dotfolder data directory (`~/.cairn`, every platform) and
+  `CAIRN_DATA_DIR`, matching CLI conventions (git/gh/docker) instead of
+  OS-managed application-data locations that may need elevated permissions
 - Runtime-validated `.cairn/project.toml`
 - Stable project identity and rename-safe workspace registration
 - SQLite migration 1 with projects, workspaces, and FTS5 search projection
@@ -146,13 +148,32 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   codex, `~/.copilot/copilot-instructions.md` for copilot), so an agent's
   environment can be pointed at Cairn without hand-editing config files.
   Supports an overridable `--home <dir>` for testing.
+- `cairn --setup [all|codex|copilot]` top-level flag alias for `cairn setup`,
+  defaulting to `all` when no target is given, so onboarding a coworker is
+  a single command.
+- The generated skill file and instructions block are written in an
+  aggressive, always-active tone (mandatory proactive save triggers,
+  mandatory work tracking, proactive search triggers, and a session-close
+  protocol), matching this user's existing Engram skill conventions rather
+  than a passive reference doc.
+- `work`, `memory`, `context`, and `search` commands now implicitly
+  initialize a project (via `ensureProjectInitialized`, a thin wrapper over
+  the existing `initializeProject`) on first use in a directory with no
+  `.cairn/project.toml` yet, instead of requiring an explicit `cairn init`
+  first. `cairn status` and `cairn doctor` intentionally keep the strict
+  `getProjectStatus` behavior (`ProjectNotFoundError`) since they are
+  explicit inspection commands.
+- Prebuilt standalone executables for macOS (arm64/x64), Linux (x64/arm64),
+  and Windows (x64), cross-compiled with `bun build --compile --target=...`
+  and published as `v0.1.0` GitHub release assets, so a coworker can run
+  Cairn without installing Bun.
 
 ## Not implemented
 
 - Context source configuration CLI commands (add/list/remove sources)
 - Count/checksum inventory reports, backup, restore, export, and recovery
   guidance
-- Prebuilt release executables, Homebrew bottles, and macOS signing/notarization
+- Homebrew bottles and macOS signing/notarization
 
 ## Next work slice
 
@@ -160,7 +181,10 @@ Slice 4 (context and unified search) is complete: `cairn context refresh`,
 `rebuild`, `status`, `search`, `prime`, and the cross-domain `cairn search`
 are all wired per ADR 0009 and the architecture's search-domain rules.
 Slice 5's import commands (including dependency-graph import) and the new
-`cairn setup` agent-onboarding command are done. Candidate next work:
+`cairn setup`/`cairn --setup` agent-onboarding command are done. Sharing
+readiness is also done: `~/.cairn` home-dotfolder storage, implicit
+project init, prebuilt release binaries, and an aggressively always-active
+generated skill. Candidate next work:
 
 1. Context source configuration CLI commands (add/list/remove sources),
    currently only configurable via `.cairn/context.toml`
