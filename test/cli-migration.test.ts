@@ -233,6 +233,45 @@ describe("Cairn CLI import", () => {
 });
 
 describe("Cairn CLI setup", () => {
+  test("supports '--setup' with no other arguments, defaulting to all", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-setup-data-");
+    const home = createTemporaryDirectory("cairn-setup-home-");
+
+    const result = Bun.spawnSync({
+      cmd: [process.execPath, cliPath, "--setup", "--home", home, "--json"],
+      env: { ...process.env, CAIRN_DATA_DIR: dataDirectory },
+      stderr: "pipe",
+      stdout: "pipe",
+    });
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout.toString()) as {
+      targets: { target: string }[];
+    };
+    expect(parsed.targets.map((target) => target.target).sort()).toEqual([
+      "codex",
+      "copilot",
+    ]);
+  });
+
+  test("supports '--setup <target>' with an explicit target", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-setup-data-");
+    const home = createTemporaryDirectory("cairn-setup-home-");
+
+    const result = Bun.spawnSync({
+      cmd: [process.execPath, cliPath, "--setup", "codex", "--home", home, "--json"],
+      env: { ...process.env, CAIRN_DATA_DIR: dataDirectory },
+      stderr: "pipe",
+      stdout: "pipe",
+    });
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout.toString()) as {
+      targets: { target: string }[];
+    };
+    expect(parsed.targets.map((target) => target.target)).toEqual(["codex"]);
+  });
+
   test("generates skill and instructions files for each target under --home", () => {
     const dataDirectory = createTemporaryDirectory("cairn-setup-data-");
     const home = createTemporaryDirectory("cairn-setup-home-");

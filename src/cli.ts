@@ -109,7 +109,7 @@ import {
   importMemories,
   importWorkItems,
 } from "./migration/migration-service.ts";
-import { runSetupCommand } from "./setup/setup-service.ts";
+import { runSetupCommand, isSetupTargetOption } from "./setup/setup-service.ts";
 
 const HELP = `Cairn ${packageJson.version}
 
@@ -181,6 +181,8 @@ Usage:
   cairn search <query> [--all] [--path <path>] [--kind <kind>]
                [--limit <n>] [--json]
   cairn setup <all|codex|copilot> [--home <dir>] [--json]
+  cairn --setup [all|codex|copilot] [--home <dir>] [--json]
+               (defaults to "all" when no target is given)
   cairn --version
   cairn --help
 `;
@@ -1286,6 +1288,17 @@ export async function runCli(arguments_: readonly string[]): Promise<number> {
   if (hasFlag(arguments_, "--version") || hasFlag(arguments_, "-v")) {
     console.log(packageJson.version);
     return 0;
+  }
+
+  if (hasFlag(arguments_, "--setup")) {
+    const setupIndex = arguments_.indexOf("--setup");
+    const candidate = arguments_[setupIndex + 1];
+    const explicitTarget = candidate !== undefined && isSetupTargetOption(candidate);
+    const target = explicitTarget ? candidate : "all";
+    const rest = arguments_.filter(
+      (_, index) => index !== setupIndex && !(explicitTarget && index === setupIndex + 1),
+    );
+    return await runSetupCommand([target, ...rest], hasFlag(arguments_, "--json"));
   }
 
   const [command, ...commandArguments] = arguments_;
