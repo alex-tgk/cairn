@@ -5,3 +5,4 @@ coverage/
 .*.bun-build
 *.db-shm
 *.db-wal
+dist-release/
