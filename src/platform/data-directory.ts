@@ -9,6 +9,12 @@ export type DataDirectoryOptions = Readonly<{
   platform?: NodeJS.Platform;
 }>;
 
+// Cairn is a CLI tool, not a GUI application, and its data directory must
+// not require write access to OS-managed application-data locations (e.g.
+// macOS's "Application Support" or Windows's AppData\Local can be
+// restricted or absent in locked-down environments). A single dotfolder
+// under the user's home directory works everywhere and matches the
+// convention used by CLI tools like git, gh, and docker.
 export function resolveDataDirectory(
   options: DataDirectoryOptions = {},
 ): string {
@@ -21,24 +27,6 @@ export function resolveDataDirectory(
     return configuredDirectory;
   }
 
-  if (platform === "darwin") {
-    return posix.join(
-      homeDirectory,
-      "Library",
-      "Application Support",
-      "Cairn",
-    );
-  }
-
-  if (platform === "win32") {
-    const localApplicationData =
-      environment.LOCALAPPDATA ??
-      win32.join(homeDirectory, "AppData", "Local");
-    return win32.join(localApplicationData, "Cairn");
-  }
-
-  return posix.join(
-    environment.XDG_DATA_HOME ?? posix.join(homeDirectory, ".local", "share"),
-    "cairn",
-  );
+  const join = platform === "win32" ? win32.join : posix.join;
+  return join(homeDirectory, ".cairn");
 }

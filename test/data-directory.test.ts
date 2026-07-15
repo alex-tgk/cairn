@@ -13,33 +13,33 @@ describe("resolveDataDirectory", () => {
     ).toBe("/custom/cairn");
   });
 
-  test("uses the macOS application support directory", () => {
+  test("uses a home dotfolder on macOS", () => {
     expect(
       resolveDataDirectory({
         environment: {},
         homeDirectory: "/Users/ada",
         platform: "darwin",
       }),
-    ).toBe("/Users/ada/Library/Application Support/Cairn");
+    ).toBe("/Users/ada/.cairn");
   });
 
-  test("uses XDG_DATA_HOME on Linux", () => {
+  test("uses a home dotfolder on Linux, ignoring XDG_DATA_HOME", () => {
     expect(
       resolveDataDirectory({
         environment: { XDG_DATA_HOME: "/data" },
         homeDirectory: "/home/ada",
         platform: "linux",
       }),
-    ).toBe("/data/cairn");
+    ).toBe("/home/ada/.cairn");
   });
 
-  test("uses LOCALAPPDATA on Windows", () => {
+  test("uses a home dotfolder on Windows, ignoring LOCALAPPDATA", () => {
     expect(
       resolveDataDirectory({
         environment: { LOCALAPPDATA: "C:\\Users\\Ada\\AppData\\Local" },
         homeDirectory: "C:\\Users\\Ada",
         platform: "win32",
       }),
-    ).toBe("C:\\Users\\Ada\\AppData\\Local\\Cairn");
+    ).toBe("C:\\Users\\Ada\\.cairn");
   });
 });

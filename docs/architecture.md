@@ -40,13 +40,13 @@ Each repository contains a tracked `.cairn/project.toml` with a version, project
 
 ## Storage
 
-The platform data directory follows operating-system conventions and can be overridden with `CAIRN_DATA_DIR`.
+The platform data directory is a single dotfolder under the user's home directory and can be overridden with `CAIRN_DATA_DIR`. Cairn is a CLI tool, not a GUI application, so it deliberately avoids OS-managed application-data locations (macOS's "Application Support", Windows's AppData\Local) that can require elevated permissions or be restricted in locked-down environments — the same convention used by CLI tools like git, gh, and docker.
 
 | Platform | Default |
 | --- | --- |
-| macOS | `~/Library/Application Support/Cairn` |
-| Linux | `$XDG_DATA_HOME/cairn` or `~/.local/share/cairn` |
-| Windows | `%LOCALAPPDATA%\Cairn` |
+| macOS | `~/.cairn` |
+| Linux | `~/.cairn` |
+| Windows | `~/.cairn` |
 
 The current schema establishes:
 
