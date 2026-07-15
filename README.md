@@ -12,6 +12,16 @@ Install the current release with Homebrew:
 brew install alex-tgk/tap/cairn
 ```
 
+Or download a prebuilt executable directly from the [latest release](https://github.com/alex-tgk/cairn/releases/latest) (`cairn-darwin-arm64`, `cairn-darwin-x64`, `cairn-linux-x64`, `cairn-linux-arm64`, or `cairn-windows-x64.exe`) — no Bun, build step, or admin permissions required:
+
+```sh
+curl -L -o cairn https://github.com/alex-tgk/cairn/releases/latest/download/cairn-<platform>
+chmod +x cairn
+./cairn --setup
+```
+
+`cairn --setup` (or `cairn setup all`) generates an always-active Cairn skill and upserts Cairn usage instructions into your agent's global config (Codex's `AGENTS.md`, Copilot's `copilot-instructions.md`). It's idempotent — safe to re-run any time.
+
 Then verify it:
 
 ```sh
@@ -19,7 +29,7 @@ cairn --version
 cairn doctor
 ```
 
-The current Homebrew Formula builds the tagged source. Prebuilt release executables and Homebrew bottles remain planned.
+The current Homebrew Formula builds the tagged source. Homebrew bottles remain planned.
 
 ## Quick path
 
@@ -29,7 +39,6 @@ bun run check
 bun run build
 
 ./dist/cairn --version
-./dist/cairn init /path/to/project
 ./dist/cairn status /path/to/project
 ./dist/cairn work create "Implement the next slice" --priority 1 --type feature
 ./dist/cairn work create "Implement a child" --parent <parent-id>
@@ -82,7 +91,9 @@ bun run build
 ./dist/cairn doctor
 ```
 
-Use `CAIRN_DATA_DIR` to override the platform data directory during development or testing.
+Use `CAIRN_DATA_DIR` to override the data directory (default: `~/.cairn`) during development or testing.
+
+Note: `cairn init` is optional — the first `work`, `memory`, or `context` command run in a project directory (one containing a `.git` root) initializes it automatically. Use `init` explicitly only if you want to set it up ahead of time or customize the project name.
 
 ## Accepted direction
 

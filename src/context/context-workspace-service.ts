@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { resolveDataDirectory } from "../platform/data-directory.ts";
 import {
-  getProjectStatus,
+  ensureProjectInitialized,
   type ProjectStatus,
 } from "../project/project-service.ts";
 import {
@@ -48,9 +48,9 @@ type ResolvedScope = Readonly<{
 
 function resolveProjectStatus(options: ContextWorkspaceOptions): ProjectStatus {
   if (options.dataDirectory === undefined) {
-    return getProjectStatus({ path: options.path });
+    return ensureProjectInitialized({ path: options.path });
   }
-  return getProjectStatus({
+  return ensureProjectInitialized({
     dataDirectory: options.dataDirectory,
     path: options.path,
   });

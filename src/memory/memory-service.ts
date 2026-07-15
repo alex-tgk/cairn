@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { getProjectStatus } from "../project/project-service.ts";
+import { ensureProjectInitialized } from "../project/project-service.ts";
 import { openCairnDatabase } from "../storage/database.ts";
 import { CairnQueryDatabase } from "../storage/query-database.ts";
 import {
@@ -111,9 +111,9 @@ export class MemoryAmbiguousReferenceError extends Error {
 
 function resolveMemoryProject(options: MemoryContextOptions) {
   if (options.dataDirectory === undefined) {
-    return getProjectStatus({ path: options.path });
+    return ensureProjectInitialized({ path: options.path });
   }
-  return getProjectStatus({
+  return ensureProjectInitialized({
     dataDirectory: options.dataDirectory,
     path: options.path,
   });

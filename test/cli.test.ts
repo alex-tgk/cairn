@@ -1146,6 +1146,23 @@ describe("Cairn CLI", () => {
     expect(result.stderr).toContain("No Cairn project found");
   });
 
+  test("implicitly initializes a project on first use of work, memory, or context, without a prior 'init'", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+
+    const created = runCli(
+      ["work", "create", "First item", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(created.exitCode).toBe(0);
+
+    const status = runCli(["status", workspace, "--json"], dataDirectory);
+    expect(status.exitCode).toBe(0);
+    const parsedStatus = JSON.parse(status.stdout) as { workspaceCount: number };
+    expect(parsedStatus.workspaceCount).toBe(1);
+  });
+
   test("refreshes, rebuilds, and reports context index status", () => {
     const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
     const workspace = createTemporaryDirectory("cairn-cli-workspace-");

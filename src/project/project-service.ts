@@ -118,3 +118,16 @@ export function getProjectStatus(
 
   return registerCurrentWorkspace(located, options);
 }
+
+// Used by the work/memory/context/search domains so that using Cairn never
+// requires a separate explicit "cairn init" step: the first work item,
+// memory, or context operation in a directory silently creates the project
+// manifest (walking up to the nearest .git root, or falling back to the
+// given path) exactly as `cairn init` would. `cairn status`/`cairn doctor`
+// intentionally keep using getProjectStatus's strict not-found behavior,
+// since they are explicit inspection commands.
+export function ensureProjectInitialized(
+  options: ProjectServiceOptions,
+): ProjectStatus {
+  return initializeProject(options);
+}

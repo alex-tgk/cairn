@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { resolveDataDirectory } from "../platform/data-directory.ts";
-import { getProjectStatus } from "../project/project-service.ts";
+import { ensureProjectInitialized } from "../project/project-service.ts";
 import {
   listRegisteredProjectWorkspaces,
   openCairnDatabase,
@@ -63,8 +63,8 @@ function resolveScope(options: SearchWorkspaceOptions): ResolvedScope {
 
   const project =
     options.dataDirectory === undefined
-      ? getProjectStatus({ path: options.path })
-      : getProjectStatus({
+      ? ensureProjectInitialized({ path: options.path })
+      : ensureProjectInitialized({
           dataDirectory: options.dataDirectory,
           path: options.path,
         });
