@@ -4,14 +4,14 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 
 ## Current release
 
-- Version: `0.1.0`
+- Version: `0.1.2`
 - Branch: `main`
 - Repository: `https://github.com/alex-tgk/cairn`
-- Release: `https://github.com/alex-tgk/cairn/releases/tag/v0.1.0`
+- Release: `https://github.com/alex-tgk/cairn/releases/tag/v0.1.2`
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 133 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 139 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -173,7 +173,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   explicit inspection commands.
 - Prebuilt standalone executables for macOS (arm64/x64), Linux (x64/arm64),
   and Windows (x64), cross-compiled with `bun build --compile --target=...`
-  and published as `v0.1.0` GitHub release assets, so a coworker can run
+  and published as `v0.1.2` GitHub release assets, so a coworker can run
   Cairn without installing Bun.
 
 ## Not implemented
