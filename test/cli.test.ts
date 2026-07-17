@@ -80,7 +80,7 @@ describe("Cairn CLI", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 7,
+      schemaVersion: 8,
     });
   });
 
@@ -906,6 +906,72 @@ describe("Cairn CLI", () => {
     ) as readonly { title: string }[];
     expect(searched).toHaveLength(1);
     expect(searched[0]?.title).toBe("Auth model v2");
+  });
+
+  test("defaults a preference to personal scope and other types to project", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const preference = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Prefers tmux",
+          "The user runs everything inside tmux.",
+          "--type",
+          "preference",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { projectId: string | null; scope: string };
+    expect(preference.scope).toBe("personal");
+    expect(preference.projectId).toBeNull();
+
+    const discovery = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Build entrypoint",
+          "The build starts from scripts/build.ts.",
+          "--type",
+          "discovery",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { projectId: string | null; scope: string };
+    expect(discovery.scope).toBe("project");
+    expect(discovery.projectId).not.toBeNull();
+
+    const overridden = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Project-specific style preference",
+          "This repo prefers 100-column lines.",
+          "--type",
+          "preference",
+          "--scope",
+          "project",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { projectId: string | null; scope: string };
+    expect(overridden.scope).toBe("project");
+    expect(overridden.projectId).not.toBeNull();
   });
 
   test("relates memories, lists relations from both sides, unrelates, and shows a timeline", () => {

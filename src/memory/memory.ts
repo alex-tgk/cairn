@@ -13,6 +13,20 @@ export type MemoryType = (typeof MEMORY_TYPES)[number];
 export const MEMORY_SCOPES = ["project", "personal"] as const;
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 
+const PERSONAL_DEFAULT_TYPES: ReadonlySet<MemoryType> = new Set(["preference"]);
+
+/**
+ * The default scope for a memory when the caller does not specify one.
+ *
+ * A `preference` is almost always a user-level fact that should follow the
+ * user across every project, so it defaults to `personal`. Every other type
+ * describes something about a specific codebase and defaults to `project`.
+ * Callers can always override this by passing an explicit scope.
+ */
+export function defaultScopeForType(type: MemoryType): MemoryScope {
+  return PERSONAL_DEFAULT_TYPES.has(type) ? "personal" : "project";
+}
+
 export type MemoryEventType =
   | "created"
   | "updated"

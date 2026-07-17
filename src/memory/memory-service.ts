@@ -5,6 +5,7 @@ import { openCairnDatabase } from "../storage/database.ts";
 import { CairnQueryDatabase } from "../storage/query-database.ts";
 import {
   createMemory,
+  defaultScopeForType,
   setMemoryArchived,
   setMemoryPinned,
   upsertMemory,
@@ -175,7 +176,7 @@ export async function saveMemory(
   return withMemoryRepository(options, async (repository, projectId) => {
     const now = (options.now ?? (() => new Date().toISOString()))();
     const idFactory = options.idFactory ?? randomUUID;
-    const scope = options.scope ?? "project";
+    const scope = options.scope ?? defaultScopeForType(options.type);
     const scopedProjectId = scope === "project" ? projectId : null;
 
     if (options.topic !== undefined) {

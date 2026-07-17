@@ -230,6 +230,56 @@ describe("Cairn CLI import", () => {
     const memories = JSON.parse(list.stdout) as { title: string }[];
     expect(memories[0]?.title).toBe("Doc one");
   });
+
+  test("imports a preference-kind context row as personal and re-imports idempotently", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-import-data-");
+    const workspace = createTemporaryDirectory("cairn-import-workspace-");
+    runCli(["init", workspace], dataDirectory);
+
+    const sourceDatabasePath = join(workspace, "context-index.sqlite");
+    const database = new Database(sourceDatabasePath);
+    database.run(
+      "CREATE TABLE documents (id INTEGER PRIMARY KEY, source TEXT, kind TEXT, title TEXT, path TEXT, project TEXT, tags TEXT, content TEXT)",
+    );
+    database.run(
+      "INSERT INTO documents (id, source, kind, title, path, project, tags, content) VALUES (1, 'engram', 'preference', 'Prefers tmux', '/p.md', 'cairn', 'tag1', 'Runs everything in tmux')",
+    );
+    database.close();
+
+    const importArguments = [
+      "import",
+      "context",
+      sourceDatabasePath,
+      "--project",
+      "cairn",
+      "--path",
+      workspace,
+      "--json",
+    ];
+
+    const first = runCli(importArguments, dataDirectory);
+    expect(first.exitCode).toBe(0);
+    expect((JSON.parse(first.stdout) as { importedCount: number }).importedCount).toBe(1);
+
+    const personal = JSON.parse(
+      runCli(
+        ["memory", "list", "--scope", "personal", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { projectId: string | null; scope: string; title: string }[];
+    expect(personal).toHaveLength(1);
+    expect(personal[0]?.title).toBe("Prefers tmux");
+    expect(personal[0]?.scope).toBe("personal");
+    expect(personal[0]?.projectId).toBeNull();
+
+    const rerun = runCli(importArguments, dataDirectory);
+    expect((JSON.parse(rerun.stdout) as { importedCount: number }).importedCount).toBe(1);
+
+    const all = JSON.parse(
+      runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory).stdout,
+    ) as { title: string }[];
+    expect(all.filter((memory) => memory.title === "Prefers tmux")).toHaveLength(1);
+  });
 });
 
 describe("Cairn CLI setup", () => {

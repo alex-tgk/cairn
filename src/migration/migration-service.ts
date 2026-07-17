@@ -332,7 +332,6 @@ export async function importContextEntries(
     const saved = await saveMemory({
       ...context(options),
       content,
-      scope: "project",
       title: row.title,
       topic: `import/context/${row.id}`,
       type: normalizeContextKind(row.kind),

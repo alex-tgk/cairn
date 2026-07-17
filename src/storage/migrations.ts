@@ -409,4 +409,38 @@ export const MIGRATIONS: readonly Migration[] = [
         ON memories(scope, project_id, archived, created_at, id);
     `,
   },
+  {
+    name: "reclassify existing preference memories to personal scope",
+    version: 8,
+    sql: `
+      -- Preferences are user-level facts that should follow the user across
+      -- every project. Earlier memories defaulted every type to project scope,
+      -- so pre-existing preferences are stranded under a single project. This
+      -- one-time correction re-scopes them to personal, matching the new
+      -- type-based default. It is deliberately a controlled data migration,
+      -- not a user-facing scope change: scope remains immutable from the CLI.
+
+      -- Record the correction in the audit trail before mutating, using each
+      -- memory's own updated_at so the migration stays deterministic.
+      INSERT INTO memory_events (memory_id, event_type, payload_json, revision, created_at)
+      SELECT id, 'updated', '{"scope":"personal"}', revision + 1, updated_at
+      FROM memories
+      WHERE type = 'preference' AND scope = 'project';
+
+      UPDATE memories
+      SET scope = 'personal',
+          project_id = NULL,
+          revision = revision + 1
+      WHERE type = 'preference' AND scope = 'project';
+
+      -- Keep the shared search projection consistent: scope is encoded in the
+      -- tag string ('<type> <scope> [topic]') and in project_id. Target rows by
+      -- their current tag prefix so already-personal preferences are untouched
+      -- and the update is order-independent. The FTS mirror updates via trigger.
+      UPDATE search_entries
+      SET project_id = NULL,
+          tags = 'preference personal' || substr(tags, length('preference project') + 1)
+      WHERE entity_kind = 'memory' AND tags LIKE 'preference project%';
+    `,
+  },
 ];
