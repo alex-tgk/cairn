@@ -51,8 +51,12 @@ describe("applySetup", () => {
     const agentsContent = readFileSync(target!.agentsFile.path, "utf8");
     expect(agentsContent).toContain("<!-- cairn:setup -->");
     expect(agentsContent).toContain("cairn work");
+    expect(agentsContent).toContain("Personal vs project scope");
+    expect(agentsContent).toContain("--scope personal");
     const skillContent = readFileSync(target!.skillFile.path, "utf8");
     expect(skillContent).toContain("# Cairn");
+    expect(skillContent).toContain("PERSONAL VS PROJECT SCOPE");
+    expect(skillContent).toContain("`preference`-type memories default to `personal`");
   });
 
   test("applies both targets for 'all'", () => {
@@ -77,6 +81,29 @@ describe("applySetup", () => {
     const content = readFileSync(target!.agentsFile.path, "utf8");
     const occurrences = content.split("<!-- cairn:setup -->").length - 1;
     expect(occurrences).toBe(1);
+  });
+
+  test("upserts correctly even when the block marker is mentioned earlier in prose", () => {
+    const home = createTemporaryHome();
+    const config = applySetup("codex", { homeDirectory: home });
+    const agentsFilePath = config.targets[0]!.agentsFile.path;
+    const priorContent = readFileSync(agentsFilePath, "utf8");
+    const withPriorMention =
+      `- See the \`<!-- cairn:setup -->\` block below for details.\n\n${priorContent}`;
+    Bun.write(agentsFilePath, withPriorMention);
+
+    applySetup("codex", { homeDirectory: home });
+
+    const content = readFileSync(agentsFilePath, "utf8");
+    expect(content).toContain("See the `<!-- cairn:setup -->` block below");
+    const startOccurrences = content.split("<!-- cairn:setup -->").length - 1;
+    expect(startOccurrences).toBe(2); // one in prose, one real block marker
+    const endOccurrences = content.split("<!-- /cairn:setup -->").length - 1;
+    expect(endOccurrences).toBe(1);
+    // the prose mention must remain intact and precede the real block
+    expect(content.indexOf("See the")).toBeLessThan(
+      content.indexOf("## Cairn (mandatory"),
+    );
   });
 
   test("preserves existing unrelated content in the agents file", () => {
