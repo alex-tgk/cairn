@@ -77,6 +77,14 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   as a deterministic primer surfacing pinned memories, the most recent
   session summary, and recent non-session-summary memories
 - Slice 3 (durable memory) is complete per ADR 0010
+- Type-derived default memory scope (ADR 0010 amendment): `preference`
+  defaults to `personal` (user-level, visible from every project), all other
+  types default to `project`, and an explicit `--scope` always overrides. The
+  policy lives in the memory domain (`defaultScopeForType`) so the CLI and the
+  importers apply it uniformly. Migration 8 reclassifies pre-existing
+  `preference` memories from project to personal (updating both `memories` and
+  the shared search projection, with an audit event), and the context importer
+  no longer hard-codes `scope: "project"`
 - `ProjectStatus` now includes `workspaceId`, resolved from the registered
   workspace row rather than only the caller-generated id, so downstream
   domains (context) can address a workspace deterministically

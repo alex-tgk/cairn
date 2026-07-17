@@ -50,3 +50,29 @@ This decision defers memory relations, timeline context around a specific memory
 - The topic-upsert rule gives agents an explicit way to evolve a running memory (an architecture decision, a preference) without manual lookups or duplicate rows, matching existing agent workflow habits.
 - Memory reuses the audit-event and search-projection patterns already proven by the work domain, reducing the risk of introducing a second inconsistent persistence style.
 - Deferring relations and timeline keeps the first memory slice reviewable and testable in isolation, at the cost of temporarily incomplete parity with the prior memory tool.
+
+## Amendment — type-derived default scope (July 16, 2026)
+
+The original decision defaulted every memory to `project` scope when `--scope`
+was omitted. In practice this stranded genuinely user-level facts (tool and
+editor choices, coding-style and workflow preferences) under whichever project
+an agent happened to be in, defeating Cairn's goal of holding user-level memory
+that follows the user across repositories. This amendment refines the default
+without changing the storage model:
+
+- **Type-derived default scope.** When `--scope` is omitted, the default is
+  derived from the memory `type`: `preference` defaults to `personal`; every
+  other type continues to default to `project`. An explicit `--scope` always
+  overrides the derived default. The policy lives in the memory domain
+  (`defaultScopeForType`) so both the CLI and the importers apply it uniformly.
+- **Scope remains immutable from the user path.** Scope is still fixed at
+  creation and cannot be changed through any CLI command. The sole exception is
+  a controlled, ordered data migration: migration 8 re-scopes pre-existing
+  `preference` memories from `project` to `personal` to match the new default,
+  records an `updated` audit event per affected memory, and keeps the shared
+  search projection consistent. Future one-time corrections of this kind must
+  likewise go through an ordered migration with an audit trail, never an ad hoc
+  mutable-scope command.
+- **Importers no longer force `project` scope.** The context importer previously
+  hard-coded `scope: "project"`; it now omits scope so the type-derived default
+  applies, which keeps re-import idempotency consistent with reclassified data.

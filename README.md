@@ -95,6 +95,8 @@ Use `CAIRN_DATA_DIR` to override the data directory (default: `~/.cairn`) during
 
 Note: `cairn init` is optional — the first `work`, `memory`, or `context` command run in a project directory (one containing a `.git` root) initializes it automatically. Use `init` explicitly only if you want to set it up ahead of time or customize the project name.
 
+Memory scope: a memory is either `project` (tied to the current repo) or `personal` (user-level, visible from every project). When `--scope` is omitted, the default is derived from the type — `preference` defaults to `personal`, every other type defaults to `project` — and an explicit `--scope` always wins. Use `personal` for facts that follow you across repositories (tool and editor choices, style and workflow preferences); use `project` for facts about a specific codebase.
+
 ## Accepted direction
 
 | Topic | Decision |

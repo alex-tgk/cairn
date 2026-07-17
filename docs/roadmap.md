@@ -76,6 +76,12 @@ Current progress:
 Slice 3 (durable memory) is complete per ADR 0010's essential memory cutover
 contract, including its explicit deferrals.
 
+Post-slice refinement (ADR 0010 amendment): memory default scope is now
+type-derived — `preference` defaults to `personal` (user-level, visible from
+every project), all other types default to `project` — with migration 8
+reclassifying pre-existing `preference` memories to personal and the context
+importer no longer forcing `project` scope.
+
 See [ADR 0010](decisions/0010-essential-memory-cutover-contract.md) for the
 essential memory cutover contract and its explicit deferrals.
 
