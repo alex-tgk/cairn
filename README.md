@@ -20,7 +20,7 @@ chmod +x cairn
 ./cairn --setup
 ```
 
-`cairn --setup` (or `cairn setup all`) generates an always-active Cairn skill and upserts Cairn usage instructions into your agent's global config (Codex's `AGENTS.md`, Copilot's `copilot-instructions.md`). It's idempotent — safe to re-run any time.
+`cairn --setup` (or `cairn setup all`) generates an always-active Cairn skill and upserts Cairn usage instructions into your agent's global config (Codex's `AGENTS.md`, Copilot's `copilot-instructions.md`). For the Copilot CLI it also installs a session-primer extension (`~/.copilot/extensions/cairn-session-primer/`) whose `onSessionStart` hook injects the current project's ready work items and recent-memory primer into every session automatically. It's idempotent — safe to re-run any time.
 
 Then verify it:
 

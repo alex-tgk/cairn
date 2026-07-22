@@ -119,4 +119,34 @@ describe("applySetup", () => {
     expect(content).toContain("My personal instructions");
     expect(content).toContain("<!-- cairn:setup -->");
   });
+
+  test("writes a session-primer extension for copilot but not codex", () => {
+    const home = createTemporaryHome();
+
+    const result = applySetup("all", { homeDirectory: home });
+    const copilot = result.targets.find((t) => t.target === "copilot");
+    const codex = result.targets.find((t) => t.target === "codex");
+
+    expect(codex?.extensionFile).toBeUndefined();
+    expect(copilot?.extensionFile?.action).toBe("created");
+    expect(copilot?.extensionFile?.path).toBe(
+      join(home, ".copilot", "extensions", "cairn-session-primer", "extension.mjs"),
+    );
+
+    const extensionContent = readFileSync(copilot!.extensionFile!.path, "utf8");
+    expect(extensionContent).toContain("@github/copilot-sdk/extension");
+    expect(extensionContent).toContain("onSessionStart");
+    expect(extensionContent).toContain("cairn");
+    expect(extensionContent).toContain("CAIRN_BIN");
+  });
+
+  test("re-running copilot setup updates the extension in place", () => {
+    const home = createTemporaryHome();
+
+    applySetup("copilot", { homeDirectory: home });
+    const second = applySetup("copilot", { homeDirectory: home });
+
+    const copilot = second.targets.find((t) => t.target === "copilot");
+    expect(copilot?.extensionFile?.action).toBe("updated");
+  });
 });
