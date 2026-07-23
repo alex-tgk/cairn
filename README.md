@@ -12,12 +12,10 @@ Install the current release with Homebrew:
 brew install alex-tgk/tap/cairn
 ```
 
-Or download a prebuilt executable directly from the [latest release](https://github.com/alex-tgk/cairn/releases/latest) (`cairn-darwin-arm64`, `cairn-darwin-x64`, `cairn-linux-x64`, `cairn-linux-arm64`, or `cairn-windows-x64.exe`) — no Bun, build step, or admin permissions required:
+Then run setup:
 
 ```sh
-curl -L -o cairn https://github.com/alex-tgk/cairn/releases/latest/download/cairn-<platform>
-chmod +x cairn
-./cairn --setup
+cairn --setup
 ```
 
 `cairn --setup` (or `cairn setup all`) generates an always-active Cairn skill and upserts Cairn usage instructions into your agent's global config (Codex's `AGENTS.md`, Copilot's `copilot-instructions.md`). For the Copilot CLI it also installs a session-primer extension (`~/.copilot/extensions/cairn-session-primer/`) whose `onSessionStart` hook injects the current project's ready work items and recent-memory primer into every session automatically. It's idempotent — safe to re-run any time.
