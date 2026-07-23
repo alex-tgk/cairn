@@ -83,14 +83,14 @@ describe("applySetup", () => {
     expect(occurrences).toBe(1);
   });
 
-  test("upserts correctly even when the block marker is mentioned earlier in prose", () => {
+  test("upserts correctly even when the block marker is mentioned earlier in prose", async () => {
     const home = createTemporaryHome();
     const config = applySetup("codex", { homeDirectory: home });
     const agentsFilePath = config.targets[0]!.agentsFile.path;
     const priorContent = readFileSync(agentsFilePath, "utf8");
     const withPriorMention =
       `- See the \`<!-- cairn:setup -->\` block below for details.\n\n${priorContent}`;
-    Bun.write(agentsFilePath, withPriorMention);
+    await Bun.write(agentsFilePath, withPriorMention);
 
     applySetup("codex", { homeDirectory: home });
 
@@ -106,12 +106,12 @@ describe("applySetup", () => {
     );
   });
 
-  test("preserves existing unrelated content in the agents file", () => {
+  test("preserves existing unrelated content in the agents file", async () => {
     const home = createTemporaryHome();
     const config = applySetup("codex", { homeDirectory: home });
     const agentsFilePath = config.targets[0]!.agentsFile.path;
     const preExisting = "# My personal instructions\n\nSome content.\n";
-    Bun.write(agentsFilePath, preExisting);
+    await Bun.write(agentsFilePath, preExisting);
 
     applySetup("codex", { homeDirectory: home });
 
