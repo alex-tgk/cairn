@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import packageJson from "../package.json";
+
 const projectRoot = join(import.meta.dir, "..");
 const cliPath = join(projectRoot, "src", "cli.ts");
 const temporaryDirectories: string[] = [];
@@ -44,7 +46,11 @@ describe("Cairn CLI", () => {
       createTemporaryDirectory("cairn-cli-data-"),
     );
 
-    expect(result).toEqual({ exitCode: 0, stderr: "", stdout: "0.1.1\n" });
+    expect(result).toEqual({
+      exitCode: 0,
+      stderr: "",
+      stdout: `${packageJson.version}\n`,
+    });
   });
 
   test("initializes a project and reports JSON status", () => {
