@@ -4,14 +4,14 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 
 ## Current release
 
-- Version: `0.1.2`
+- Version: `0.2.0`
 - Branch: `main`
 - Repository: `https://github.com/alex-tgk/cairn`
-- Release: `https://github.com/alex-tgk/cairn/releases/tag/v0.1.2`
+- Release: `https://github.com/alex-tgk/cairn/releases/tag/v0.2.0`
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 139 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 141 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
