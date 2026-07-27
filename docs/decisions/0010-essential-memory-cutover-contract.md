@@ -128,3 +128,60 @@ model or migration history:
   staleness, and does not add a `--stale-only`/`--exclude-stale` filter. A
   future work unit may build decay-aware ranking or filtering on top of this
   signal, but that is explicitly out of scope here.
+
+## Amendment — memory backlinks to work items and context documents (July 27, 2026)
+
+Memory relations (this ADR's original decision) link memory to memory, but
+there was no first-class link from a memory back to the work item it
+resolves or the context document (indexed file) it explains — that
+traversal required a second `work show`/`context search` call plus manual
+correlation. This amendment adds two new link tables without changing any
+existing table or the memory-relation contract:
+
+- **Migration 9 adds `memory_work_links` and `memory_context_links`.**
+  `memory_work_links(memory_id, work_item_id, created_at)` and
+  `memory_context_links(memory_id, context_document_id, created_at)` are
+  each a plain many-to-many join with a composite primary key and a foreign
+  key to `memories(id)` plus, respectively, `work_items(id)` or
+  `context_documents(id)`, both `ON DELETE CASCADE`. Unlike
+  `memory_relations`, there is no canonical-ordering constraint, because
+  the two ends are different entity kinds and cannot collide.
+- **Read-only cross-domain resolution stays in the memory infrastructure
+  adapter.** `docs/architecture.md` keeps work, memory, and context as
+  separate domains that happen to share one physical SQLite database.
+  Consistent with that shared-database model, `SqliteMemoryRepository`
+  resolves and validates link targets by reading `work_items` and
+  `context_documents` directly (id-or-unambiguous-id-prefix for work items,
+  matching the existing work-reference convention; exact document id or
+  exact indexed relative path for context documents) — but it never writes
+  to those tables. Every write for this feature is confined to the two new
+  memory-owned link tables. The memory application layer
+  (`memory-service.ts`) still does not import `work-service.ts` or
+  `context-service.ts`.
+- **New CLI surface.** `memory link-work <id> <work-item-id>`,
+  `memory unlink-work <id> <work-item-id>`, `memory link-context <id>
+  <reference>`, and `memory unlink-context <id> <reference>` (`<reference>`
+  is a context document's id or its indexed relative path). Linking is
+  idempotent; unlinking a pair that is not linked is a no-op success,
+  matching `memory relate`/`unrelate`'s existing idempotency contract. An
+  unresolved or ambiguous target fails with a dedicated error code
+  (`work_item_not_found`, `ambiguous_work_item_reference`,
+  `context_document_not_found`, `ambiguous_context_document_reference`) and
+  exit code 1, matching the existing `memory_not_found`/
+  `ambiguous_memory_reference` convention.
+- **Surfaced on `memory show` only, in this slice.** Every `memory show`
+  result (JSON and human-readable) now includes `linkedWorkItems` and
+  `linkedContextDocuments` arrays with each linked target's id, title, and
+  (for work items) status/type or (for context documents) relative path.
+  Unlike the staleness amendment above, this is deliberately *not* added to
+  `memory list`, `memory search`, `memory relations`, or `memory timeline`
+  in this slice, to avoid an extra join fan-out on every list-shaped read
+  and to keep the change reviewable; a future work unit may extend it if
+  needed.
+- **Reverse lookup deferred.** Surfacing which memories link to a given
+  work item from `cairn work show`, or to a given context document from
+  `cairn context search`/`cairn search`, is explicitly deferred and tracked
+  in `docs/roadmap.md`'s backlog rather than implemented here, since it
+  would require the work/context domains to read the new memory-owned link
+  tables — the same shared-database read pattern used above, just from the
+  other direction — and that is a separate, reviewable slice.

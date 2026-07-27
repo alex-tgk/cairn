@@ -70,6 +70,10 @@ bun run build
 ./dist/cairn memory relate <memory-id> <related-memory-id>
 ./dist/cairn memory relations <memory-id>
 ./dist/cairn memory unrelate <memory-id> <related-memory-id>
+./dist/cairn memory link-work <memory-id> <work-item-id>
+./dist/cairn memory unlink-work <memory-id> <work-item-id>
+./dist/cairn memory link-context <memory-id> <relative-path-or-document-id>
+./dist/cairn memory unlink-context <memory-id> <relative-path-or-document-id>
 ./dist/cairn memory timeline <memory-id> --before 5 --after 5
 ./dist/cairn memory pin <memory-id>
 ./dist/cairn memory unpin <memory-id>
@@ -108,6 +112,8 @@ Memory scope: a memory is either `project` (tied to the current repo) or `person
 
 Memory staleness: every memory read (`show`, `list`, `search`, `sessions`, `context`) reports a derived `ageDays` (whole days since `updatedAt`) and a `stale` boolean, computed at read time and never stored. A memory is stale once its age exceeds 90 days by default; `pinned` memories are never stale regardless of age, since a pin is an explicit "keep fresh" signal. Override the threshold per query with `--stale-after-days <n>` on `memory list` and `memory search` (and `memory sessions`).
 
+Memory backlinks: a memory can link back to the work item it resolves or the context document (indexed file) it explains, so an agent that finds a memory can trace it to what it is about without a second lookup and manual correlation. `memory link-work <memory-id> <work-item-id>` and `memory unlink-work <memory-id> <work-item-id>` manage links to a work item, resolved the same way work item references resolve elsewhere (exact id or an unambiguous id prefix, scoped to the current project). `memory link-context <memory-id> <reference>` and `memory unlink-context <memory-id> <reference>` manage links to an indexed context document, where `<reference>` is either the document's id or its indexed relative path (for example `docs/architecture.md`); the target document must already be indexed (`context refresh`/`context rebuild`). `memory show <id>` always includes `linkedWorkItems` and `linkedContextDocuments` arrays (JSON and human-readable) listing each linked target's id, title, and (for work items) status/type or (for context documents) relative path. Linking is idempotent and each memory/target pair is tracked once; unlinking a pair that isn't linked is a no-op success. This slice covers only the memory-side link/list; the reverse lookup — showing which memories reference a given work item from `work show` or a given document from `context search` — is deferred (see `docs/roadmap.md`).
+
 ## Accepted direction
 
 | Topic | Decision |
@@ -137,6 +143,7 @@ Memory staleness: every memory read (`show`, `list`, `search`, `sessions`, `cont
 | List, ready, and blocked filtering | Implemented |
 | Durable memory capture, topics, scopes, list, and search | Implemented |
 | Memory relations and timeline context | Implemented |
+| Memory backlinks to work items and context documents (`link-work`/`link-context`) | Implemented |
 | Memory pin/archive state, session-summary listing, and context primer | Implemented |
 | Local context domain, discovery, and incremental indexing | Implemented |
 | Context CLI (`refresh`, `rebuild`, `status`, `search`, `prime`) | Implemented |

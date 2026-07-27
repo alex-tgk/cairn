@@ -67,12 +67,20 @@ import {
   listMemoryRelations,
   relateMemories,
   unrelateMemories,
+  linkMemoryToContextDocument,
+  linkMemoryToWorkItem,
+  unlinkMemoryFromContextDocument,
+  unlinkMemoryFromWorkItem,
   pinMemory,
   unpinMemory,
   archiveMemory,
   unarchiveMemory,
   listSessionSummaries,
   getContextPrimer,
+  LinkedContextDocumentAmbiguousReferenceError,
+  LinkedContextDocumentNotFoundError,
+  LinkedWorkItemAmbiguousReferenceError,
+  LinkedWorkItemNotFoundError,
   MemoryAmbiguousReferenceError,
   MemoryNotFoundError,
 } from "./memory/memory-service.ts";
@@ -167,6 +175,10 @@ Usage:
   cairn memory relate <id> <related-id> [--path <path>] [--json]
   cairn memory unrelate <id> <related-id> [--path <path>] [--json]
   cairn memory relations <id> [--path <path>] [--json]
+  cairn memory link-work <id> <work-item-id> [--path <path>] [--json]
+  cairn memory unlink-work <id> <work-item-id> [--path <path>] [--json]
+  cairn memory link-context <id> <path-or-doc-id> [--path <path>] [--json]
+  cairn memory unlink-context <id> <path-or-doc-id> [--path <path>] [--json]
   cairn memory timeline <id> [--before <n>] [--after <n>] [--path <path>] [--json]
   cairn memory pin <id> [--path <path>] [--json]
   cairn memory unpin <id> [--path <path>] [--json]
@@ -780,6 +792,38 @@ function memoryListFilter(arguments_: readonly string[]) {
   };
 }
 
+function printMemoryDetail(
+  memory: Awaited<ReturnType<typeof showMemory>>,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(memory, null, 2));
+    return;
+  }
+  const { linkedContextDocuments, linkedWorkItems, ...fields } = memory;
+  for (const [key, entry] of Object.entries(fields)) {
+    console.log(`${key}: ${String(entry)}`);
+  }
+  console.log(
+    `linkedWorkItems: ${
+      linkedWorkItems.length === 0
+        ? "none"
+        : linkedWorkItems
+            .map((item) => `${item.id} (${item.title}, ${item.status})`)
+            .join(", ")
+    }`,
+  );
+  console.log(
+    `linkedContextDocuments: ${
+      linkedContextDocuments.length === 0
+        ? "none"
+        : linkedContextDocuments
+            .map((document) => `${document.id} (${document.relativePath})`)
+            .join(", ")
+    }`,
+  );
+}
+
 function printMemoryList(
   memories: Awaited<ReturnType<typeof listMemories>>,
   json: boolean,
@@ -1137,7 +1181,7 @@ async function runMemoryCommand(
   }
 
   if (action === "show") {
-    printResult(await showMemory({ id: primary ?? "", path }), json);
+    printMemoryDetail(await showMemory({ id: primary ?? "", path }), json);
     return 0;
   }
 
@@ -1178,6 +1222,60 @@ async function runMemoryCommand(
   if (action === "relations") {
     printMemoryList(
       await listMemoryRelations({ id: primary ?? "", path }),
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "link-work") {
+    const workItemId = secondary ?? "";
+    const workItem = await linkMemoryToWorkItem({
+      id: primary ?? "",
+      path,
+      workItemId,
+    });
+    printResult(
+      { id: primary ?? "", linked: true, workItemId: workItem.id },
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "unlink-work") {
+    const workItemId = secondary ?? "";
+    await unlinkMemoryFromWorkItem({ id: primary ?? "", path, workItemId });
+    printResult({ id: primary ?? "", linked: false, workItemId }, json);
+    return 0;
+  }
+
+  if (action === "link-context") {
+    const contextDocumentReference = secondary ?? "";
+    const document = await linkMemoryToContextDocument({
+      contextDocumentReference,
+      id: primary ?? "",
+      path,
+    });
+    printResult(
+      {
+        contextDocumentId: document.id,
+        id: primary ?? "",
+        linked: true,
+        relativePath: document.relativePath,
+      },
+      json,
+    );
+    return 0;
+  }
+
+  if (action === "unlink-context") {
+    const contextDocumentReference = secondary ?? "";
+    await unlinkMemoryFromContextDocument({
+      contextDocumentReference,
+      id: primary ?? "",
+      path,
+    });
+    printResult(
+      { contextDocumentReference, id: primary ?? "", linked: false },
       json,
     );
     return 0;
@@ -1495,6 +1593,40 @@ function describeCliError(error: unknown): CliError {
     };
   }
   if (error instanceof MemoryNotFoundError) {
+    return {
+      code: error.code,
+      details: { reference: error.reference },
+      message: error.message,
+    };
+  }
+  if (error instanceof LinkedWorkItemAmbiguousReferenceError) {
+    return {
+      code: error.code,
+      details: {
+        candidates: error.candidateIds,
+        reference: error.reference,
+      },
+      message: error.message,
+    };
+  }
+  if (error instanceof LinkedWorkItemNotFoundError) {
+    return {
+      code: error.code,
+      details: { reference: error.reference },
+      message: error.message,
+    };
+  }
+  if (error instanceof LinkedContextDocumentAmbiguousReferenceError) {
+    return {
+      code: error.code,
+      details: {
+        candidates: error.candidateIds,
+        reference: error.reference,
+      },
+      message: error.message,
+    };
+  }
+  if (error instanceof LinkedContextDocumentNotFoundError) {
     return {
       code: error.code,
       details: { reference: error.reference },

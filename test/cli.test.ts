@@ -86,7 +86,7 @@ describe("Cairn CLI", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 8,
+      schemaVersion: 9,
     });
   });
 
@@ -1140,6 +1140,185 @@ describe("Cairn CLI", () => {
     };
     expect(timeline.target.title).toBe("First");
     expect(timeline.after.map((memory) => memory.title)).toEqual(["Second"]);
+  });
+
+  test("links and unlinks a memory to a work item, surfaced on memory show", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const workItem = JSON.parse(
+      runCli(
+        ["work", "create", "Fix the flaky test", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string };
+
+    const memory = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Root cause",
+          "The test was flaky due to unseeded randomness.",
+          "--type",
+          "bugfix",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string };
+
+    const linked = JSON.parse(
+      runCli(
+        ["memory", "link-work", memory.id, workItem.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { linked: boolean; workItemId: string };
+    expect(linked.linked).toBe(true);
+    expect(linked.workItemId).toBe(workItem.id);
+
+    const shown = JSON.parse(
+      runCli(
+        ["memory", "show", memory.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as {
+      linkedContextDocuments: readonly unknown[];
+      linkedWorkItems: readonly { id: string; status: string; title: string; type: string }[];
+    };
+    expect(shown.linkedWorkItems).toEqual([
+      { id: workItem.id, status: "open", title: "Fix the flaky test", type: "task" },
+    ]);
+    expect(shown.linkedContextDocuments).toHaveLength(0);
+
+    const unlinked = JSON.parse(
+      runCli(
+        ["memory", "unlink-work", memory.id, workItem.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { linked: boolean };
+    expect(unlinked.linked).toBe(false);
+
+    const shownAfterUnlink = JSON.parse(
+      runCli(
+        ["memory", "show", memory.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { linkedWorkItems: readonly unknown[] };
+    expect(shownAfterUnlink.linkedWorkItems).toHaveLength(0);
+
+    const missingWorkItem = runCli(
+      ["memory", "link-work", memory.id, "does-not-exist", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(missingWorkItem.exitCode).toBe(1);
+    expect(JSON.parse(missingWorkItem.stderr) as { error: { code: string } }).toMatchObject(
+      { error: { code: "work_item_not_found" } },
+    );
+  });
+
+  test("links and unlinks a memory to a context document, by id and by relative path", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    mkdirSync(join(workspace, "docs"));
+    writeFileSync(
+      join(workspace, "docs", "architecture.md"),
+      "# Architecture\n\nDomains stay separate behind one platform.\n",
+    );
+    runCli(["init", workspace, "--json"], dataDirectory);
+    runCli(["context", "refresh", "--path", workspace, "--json"], dataDirectory);
+
+    const memory = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Why domains stay separate",
+          "This documents the domain boundary rationale.",
+          "--type",
+          "architecture",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string };
+
+    const linked = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "link-context",
+          memory.id,
+          "docs/architecture.md",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { linked: boolean; relativePath: string };
+    expect(linked.linked).toBe(true);
+    expect(linked.relativePath).toBe("docs/architecture.md");
+
+    const shown = JSON.parse(
+      runCli(
+        ["memory", "show", memory.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as {
+      linkedContextDocuments: readonly { id: string; relativePath: string; title: string }[];
+    };
+    expect(shown.linkedContextDocuments).toEqual([
+      { id: expect.any(String), relativePath: "docs/architecture.md", title: expect.any(String) },
+    ]);
+
+    const unlinked = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "unlink-context",
+          memory.id,
+          "docs/architecture.md",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { linked: boolean };
+    expect(unlinked.linked).toBe(false);
+
+    const shownAfterUnlink = JSON.parse(
+      runCli(
+        ["memory", "show", memory.id, "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { linkedContextDocuments: readonly unknown[] };
+    expect(shownAfterUnlink.linkedContextDocuments).toHaveLength(0);
+
+    const missingDocument = runCli(
+      [
+        "memory",
+        "link-context",
+        memory.id,
+        "docs/does-not-exist.md",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    expect(missingDocument.exitCode).toBe(1);
+    expect(
+      JSON.parse(missingDocument.stderr) as { error: { code: string } },
+    ).toMatchObject({ error: { code: "context_document_not_found" } });
   });
 
   test("pins, unpins, archives, and unarchives a memory", () => {
