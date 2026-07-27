@@ -7,7 +7,9 @@ import { SqliteWorkItemRepository } from "./sqlite-work-item-repository.ts";
 import {
   claimWorkItem,
   closeWorkItem,
+  computeBlockedStaleness,
   createWorkItem,
+  DEFAULT_STALLED_AFTER_DAYS,
   reopenWorkItem,
   updateWorkItem,
   WorkItemConflictError,
@@ -64,8 +66,10 @@ export type WorkReadinessView = WorkItemView &
       status: WorkItemStatus;
       title: string;
     }>[];
+    daysSinceLastBlockerActivity?: number;
     readiness: "ready" | "blocked";
     reason: string;
+    stalled?: boolean;
   }>;
 
 export type WorkCommentView = Readonly<{
@@ -515,9 +519,14 @@ export async function listWorkComments(
   });
 }
 
-function toReadinessView(  readiness: "ready" | "blocked",
+function toReadinessView(
+  readiness: "ready" | "blocked",
   item: WorkItem,
   blockers: readonly WorkItem[],
+  staleness?: Readonly<{
+    daysSinceLastBlockerActivity: number;
+    stalled: boolean;
+  }>,
 ): WorkReadinessView {
   return {
     ...toWorkItemView(item),
@@ -534,6 +543,7 @@ function toReadinessView(  readiness: "ready" | "blocked",
     reason: readiness === "ready"
       ? "Open with no active blockers"
       : `Blocked by ${blockers.length} active blocker${blockers.length === 1 ? "" : "s"}`,
+    ...(staleness ?? {}),
   };
 }
 
@@ -549,12 +559,25 @@ export async function listReadyWork(
 }
 
 export async function listBlockedWork(
-  options: WorkContextOptions & WorkListFilterOptions,
+  options: WorkContextOptions &
+    WorkListFilterOptions &
+    Readonly<{
+      now?: (() => string) | undefined;
+      stalledAfterDays?: number | undefined;
+    }>,
 ): Promise<readonly WorkReadinessView[]> {
   return withWorkRepository(options, async (repository, projectId) => {
     const filter = await resolveWorkFilter(repository, projectId, options);
+    const now = (options.now ?? (() => new Date().toISOString()))();
+    const stalledAfterDays = options.stalledAfterDays ?? DEFAULT_STALLED_AFTER_DAYS;
     return (await repository.listBlocked(projectId, filter)).map(
-      ({ blockers, item }) => toReadinessView("blocked", item, blockers),
+      ({ blockers, item }) =>
+        toReadinessView(
+          "blocked",
+          item,
+          blockers,
+          computeBlockedStaleness(item, blockers, now, stalledAfterDays),
+        ),
     );
   });
 }

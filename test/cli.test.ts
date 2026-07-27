@@ -594,6 +594,82 @@ describe("Cairn CLI", () => {
     ]);
   });
 
+  test("reports a stalled signal on work blocked and rejects an invalid override", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+    const blocker = JSON.parse(
+      runCli(
+        ["work", "create", "Blocker", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string; shortId: string };
+    const blocked = JSON.parse(
+      runCli(
+        ["work", "create", "Blocked", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { id: string; shortId: string };
+    runCli(
+      [
+        "work",
+        "dep",
+        "add",
+        blocked.shortId,
+        blocker.shortId,
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+
+    const blockedList = runCli(
+      ["work", "blocked", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(JSON.parse(blockedList.stdout)).toMatchObject([
+      {
+        daysSinceLastBlockerActivity: 0,
+        id: blocked.id,
+        readiness: "blocked",
+        stalled: false,
+      },
+    ]);
+
+    const stalledWithZeroThreshold = runCli(
+      [
+        "work",
+        "blocked",
+        "--stalled-after-days",
+        "0",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    expect(stalledWithZeroThreshold.exitCode).toBe(2);
+    expect(stalledWithZeroThreshold.stderr).toContain(
+      "Stalled-after-days threshold must be a positive integer",
+    );
+
+    const nonNumericThreshold = runCli(
+      [
+        "work",
+        "blocked",
+        "--stalled-after-days",
+        "abc",
+        "--path",
+        workspace,
+        "--json",
+      ],
+      dataDirectory,
+    );
+    expect(nonNumericThreshold.exitCode).toBe(2);
+  });
+
   test("manages labels, notes, and comments", () => {
     const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
     const workspace = createTemporaryDirectory("cairn-cli-workspace-");
@@ -1206,6 +1282,78 @@ describe("Cairn CLI", () => {
         (memory) => memory.title === "Session summary: cairn",
       ),
     ).toBe(false);
+  });
+
+  test("surfaces ageDays/stale on memory JSON and text output and validates --stale-after-days", () => {
+    const dataDirectory = createTemporaryDirectory("cairn-cli-data-");
+    const workspace = createTemporaryDirectory("cairn-cli-workspace-");
+    mkdirSync(join(workspace, ".git"));
+    runCli(["init", workspace, "--json"], dataDirectory);
+
+    const saved = JSON.parse(
+      runCli(
+        [
+          "memory",
+          "save",
+          "Recent note",
+          "A freshly saved note.",
+          "--type",
+          "discovery",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { ageDays: number; id: string; stale: boolean };
+    expect(saved.ageDays).toBe(0);
+    expect(saved.stale).toBe(false);
+
+    const shown = JSON.parse(
+      runCli(["memory", "show", saved.id, "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as { ageDays: number; stale: boolean };
+    expect(shown.ageDays).toBe(0);
+    expect(shown.stale).toBe(false);
+
+    const listed = JSON.parse(
+      runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory)
+        .stdout,
+    ) as readonly { ageDays: number; stale: boolean }[];
+    expect(listed[0]?.ageDays).toBe(0);
+    expect(listed[0]?.stale).toBe(false);
+
+    const searched = JSON.parse(
+      runCli(
+        ["memory", "search", "freshly saved", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as readonly { ageDays: number; stale: boolean }[];
+    expect(searched).toHaveLength(1);
+    expect(searched[0]?.stale).toBe(false);
+
+    const listedText = runCli(
+      ["memory", "list", "--path", workspace],
+      dataDirectory,
+    ).stdout;
+    expect(listedText).toContain("age: 0d");
+
+    const invalidThreshold = runCli(
+      ["memory", "list", "--stale-after-days", "0", "--path", workspace, "--json"],
+      dataDirectory,
+    );
+    expect(invalidThreshold.exitCode).toBe(1);
+    expect(JSON.parse(invalidThreshold.stderr)).toMatchObject({
+      error: { code: "invalid_memory" },
+    });
+
+    const withCustomThreshold = JSON.parse(
+      runCli(
+        ["memory", "list", "--stale-after-days", "1000", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as readonly { stale: boolean }[];
+    expect(withCustomThreshold[0]?.stale).toBe(false);
   });
 
   test("returns a non-zero result outside a Cairn project", () => {

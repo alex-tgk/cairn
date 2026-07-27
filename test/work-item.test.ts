@@ -3,12 +3,16 @@ import { describe, expect, test } from "bun:test";
 import {
   claimWorkItem,
   closeWorkItem,
+  computeBlockedStaleness,
   createWorkItem,
+  DEFAULT_STALLED_AFTER_DAYS,
+  parseStalledAfterDays,
   reopenWorkItem,
   updateWorkItem,
   WorkItemClaimConflictError,
   WorkItemId,
   WorkItemTransitionError,
+  WorkItemValidationError,
 } from "../src/work/work-item.ts";
 
 const CREATED_AT = "2026-07-12T12:00:00.000Z";
@@ -195,5 +199,117 @@ describe("work-item lifecycle", () => {
         "2026-07-12T13:00:00.000Z",
       ),
     ).toThrow("At least one work item field must be updated");
+  });
+});
+
+describe("blocked-item staleness signal", () => {
+  function itemWithUpdatedAt(updatedAt: string) {
+    return { ...createFixture(), updatedAt };
+  }
+
+  test("a freshly-created blocked item is not stalled", () => {
+    const item = itemWithUpdatedAt("2026-07-12T12:00:00.000Z");
+    const blocker = itemWithUpdatedAt("2026-07-12T12:00:00.000Z");
+
+    const staleness = computeBlockedStaleness(
+      item,
+      [blocker],
+      "2026-07-13T12:00:00.000Z",
+    );
+
+    expect(staleness).toEqual({
+      daysSinceLastBlockerActivity: 1,
+      stalled: false,
+    });
+  });
+
+  test("is stalled once the blocker chain's last activity is old enough", () => {
+    const item = itemWithUpdatedAt("2026-01-01T00:00:00.000Z");
+    const blocker = itemWithUpdatedAt("2026-01-01T00:00:00.000Z");
+
+    const staleness = computeBlockedStaleness(
+      item,
+      [blocker],
+      "2026-02-05T00:00:00.000Z",
+    );
+
+    expect(staleness).toEqual({
+      daysSinceLastBlockerActivity: 35,
+      stalled: true,
+    });
+  });
+
+  test("daysSinceLastBlockerActivity reflects the max of item-own and blocker-chain activity", () => {
+    const staleItem = itemWithUpdatedAt("2026-01-01T00:00:00.000Z");
+    const recentlyUpdatedBlocker = itemWithUpdatedAt(
+      "2026-01-30T00:00:00.000Z",
+    );
+
+    const staleness = computeBlockedStaleness(
+      staleItem,
+      [recentlyUpdatedBlocker],
+      "2026-02-05T00:00:00.000Z",
+    );
+
+    expect(staleness).toEqual({
+      daysSinceLastBlockerActivity: 6,
+      stalled: false,
+    });
+
+    const recentlyUpdatedItem = itemWithUpdatedAt(
+      "2026-01-30T00:00:00.000Z",
+    );
+    const staleBlocker = itemWithUpdatedAt("2026-01-01T00:00:00.000Z");
+
+    expect(
+      computeBlockedStaleness(
+        recentlyUpdatedItem,
+        [staleBlocker],
+        "2026-02-05T00:00:00.000Z",
+      ),
+    ).toEqual({ daysSinceLastBlockerActivity: 6, stalled: false });
+  });
+
+  test("uses the default 30-day threshold when none is provided", () => {
+    expect(DEFAULT_STALLED_AFTER_DAYS).toBe(30);
+
+    const item = itemWithUpdatedAt("2026-01-01T00:00:00.000Z");
+    const justUnderThreshold = computeBlockedStaleness(
+      item,
+      [],
+      "2026-01-30T00:00:00.000Z",
+    );
+    const atThreshold = computeBlockedStaleness(
+      item,
+      [],
+      "2026-01-31T00:00:00.000Z",
+    );
+
+    expect(justUnderThreshold.stalled).toBe(false);
+    expect(atThreshold.stalled).toBe(true);
+  });
+
+  test("honors a custom stalled-after-days override", () => {
+    const item = itemWithUpdatedAt("2026-01-01T00:00:00.000Z");
+
+    expect(
+      computeBlockedStaleness(item, [], "2026-01-11T00:00:00.000Z", 10)
+        .stalled,
+    ).toBe(true);
+    expect(
+      computeBlockedStaleness(item, [], "2026-01-10T00:00:00.000Z", 10)
+        .stalled,
+    ).toBe(false);
+  });
+
+  test("parses a positive integer stalled-after-days override", () => {
+    expect(parseStalledAfterDays("45")).toBe(45);
+  });
+
+  test("rejects a non-positive-integer stalled-after-days override", () => {
+    expect(() => parseStalledAfterDays("0")).toThrow(WorkItemValidationError);
+    expect(() => parseStalledAfterDays("-5")).toThrow(WorkItemValidationError);
+    expect(() => parseStalledAfterDays("abc")).toThrow(WorkItemValidationError);
+    expect(() => parseStalledAfterDays("3.5")).toThrow(WorkItemValidationError);
   });
 });

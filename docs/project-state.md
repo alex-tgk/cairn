@@ -175,6 +175,21 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   and Windows (x64), cross-compiled with `bun build --compile --target=...`
   and published as `v0.1.2` GitHub release assets, so a coworker can run
   Cairn without installing Bun.
+- `cairn work blocked` now surfaces a derived, read-time-only staleness
+  signal per item (`stalled` boolean, `daysSinceLastBlockerActivity`
+  integer), computed from existing audit history with no new migration or
+  stored column: "blocker activity" is `max(item.updatedAt, ...blockers
+  .map(b => b.updatedAt))`, since every audit-producing mutation already
+  advances `updatedAt` alongside its event. Default threshold is 30 days,
+  overridable per-invocation with `--stalled-after-days <n>` (positive
+  integer; invalid input exits `2`, matching `context search`/`prime`'s
+  validation convention rather than the rest of `work`'s exit-`1`
+  convention — a narrow, documented exception). `work ready --explain`
+  is unchanged, since ready items have no blocker chain to evaluate. See
+  ADR 0008's July 27, 2026 amendment; domain logic lives in
+  `computeBlockedStaleness`/`DEFAULT_STALLED_AFTER_DAYS`
+  (`src/work/work-item.ts`), wired in `listBlockedWork`
+  (`src/work/work-service.ts`).
 
 ## Not implemented
 
