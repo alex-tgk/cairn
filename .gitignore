@@ -6,3 +6,4 @@ coverage/
 *.db-shm
 *.db-wal
 dist-release/
+.DS_Store

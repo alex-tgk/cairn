@@ -1,9 +1,12 @@
 ---
 marp: true
-theme: default
+theme: cairn-talk
 paginate: true
 title: "Cairn: Context Efficiency, Staleness, and Honest AI Agent Memory"
+footer: "Cairn · Context Efficiency"
 ---
+
+<!-- _class: title -->
 
 # Cairn as a lens on AI agent memory
 
@@ -164,6 +167,8 @@ a talk-prep doc.
    token counts, not architecture slides alone
 
 ---
+
+<!-- _class: closing -->
 
 # Questions?
 

@@ -1,0 +1,190 @@
+/*
+ * @theme cairn-talk
+ * @size 16:9 1280px 720px
+ *
+ * Custom Marp theme for the "Cairn: Context Efficiency" talk deck.
+ * Deliberately plain and deterministic, matching Cairn's own design
+ * ethos: no gradients-as-decoration, one accent color, clear hierarchy.
+ */
+
+@import 'default';
+
+:root {
+  --cairn-ink: #16202a;
+  --cairn-muted: #55636f;
+  --cairn-accent: #2f7d6e;
+  --cairn-accent-soft: #d9ece5;
+  --cairn-border: #c3d6cd;
+  --cairn-bg: #eef4f1;
+  --cairn-code-bg: #101820;
+}
+
+section {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background: var(--cairn-bg);
+  color: var(--cairn-ink);
+  padding: 64px 76px;
+  font-size: 26px;
+  line-height: 1.5;
+}
+
+section::after {
+  content: "cairn";
+  position: absolute;
+  right: 28px;
+  bottom: 18px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--cairn-muted);
+  text-transform: uppercase;
+}
+
+h1 {
+  font-size: 46px;
+  font-weight: 700;
+  color: var(--cairn-ink);
+  border-bottom: 4px solid var(--cairn-accent);
+  padding-bottom: 16px;
+  margin-bottom: 28px;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--cairn-accent);
+  margin-bottom: 22px;
+}
+
+h3 {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--cairn-ink);
+}
+
+p, li {
+  color: var(--cairn-ink);
+}
+
+strong {
+  color: var(--cairn-accent);
+  font-weight: 700;
+}
+
+em {
+  color: var(--cairn-muted);
+}
+
+a {
+  color: var(--cairn-accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--cairn-accent);
+}
+
+ul > li::marker {
+  color: var(--cairn-accent);
+}
+
+blockquote {
+  border-left: 4px solid var(--cairn-accent);
+  background: var(--cairn-accent-soft);
+  padding: 14px 22px;
+  margin: 0;
+  border-radius: 0 6px 6px 0;
+  color: var(--cairn-ink);
+  font-style: normal;
+}
+
+code {
+  background: var(--cairn-accent-soft);
+  color: var(--cairn-ink);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.85em;
+}
+
+pre {
+  background: var(--cairn-code-bg);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+pre code {
+  background: transparent;
+  color: #e6f1ee;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9em;
+}
+
+thead th {
+  background: var(--cairn-accent);
+  color: white;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+tbody td {
+  border-bottom: 1px solid var(--cairn-border);
+  padding: 10px 14px;
+}
+
+tbody tr:nth-child(even) {
+  background: var(--cairn-accent-soft);
+}
+
+/* Title and closing slides opt into a dark cover treatment via an
+   explicit per-slide class (`<!-- _class: title -->` / `<!-- _class: closing -->`)
+   in the markdown front matter. Marp isolates each slide in its own
+   container, so a `:first-of-type` selector would match every slide —
+   explicit classes are required instead. */
+section.title,
+section.closing {
+  background: linear-gradient(160deg, var(--cairn-ink) 0%, #203547 100%);
+  color: white;
+  justify-content: center;
+}
+
+section.title h1,
+section.closing h1 {
+  color: white;
+  border-bottom: 4px solid var(--cairn-accent);
+  font-size: 54px;
+}
+
+section.closing h1 {
+  border-bottom: none;
+  font-size: 56px;
+}
+
+section.closing {
+  text-align: center;
+}
+
+section.title p,
+section.title li,
+section.closing p,
+section.closing li {
+  color: #c9d6dc;
+}
+
+section.title code,
+section.closing code {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e6f1ee;
+}
+
+section.title::after,
+section.closing::after {
+  color: #9fb3bd;
+}
+
+/* Pagination */
+section::before {
+  color: var(--cairn-muted);
+  font-size: 13px;
+}
