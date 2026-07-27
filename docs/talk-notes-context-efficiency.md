@@ -7,6 +7,11 @@
 > `docs/roadmap.md`), not committed roadmap items — triage before promoting
 > anything here into `roadmap.md` or a new ADR.
 
+See [talk-context-efficiency-slides.md](talk-context-efficiency-slides.md)
+for the slide deck built from these notes (Marp-formatted markdown; render
+with `npx @marp-team/marp-cli talk-context-efficiency-slides.md -o slides.html`
+or the Marp VS Code extension).
+
 ## Context: what prompted this
 
 While outlining a talk about Cairn as an example of context-efficient,
