@@ -57,3 +57,42 @@ Bulk import of parent/child hierarchy and blocking-dependency edges from an exte
 - The work domain gains several SQLite-specific invariants and recursive queries; they remain behind domain-owned repository ports and may use explicit SQL under ADR 0007.
 - UUID prefixes improve interactive use without weakening canonical identity, but scripts must persist full IDs and handle typed conflicts.
 - Sharing and merging work databases between machines remains a later operations problem rather than an implicit promise of the issue-tracker replacement.
+
+## Amendment: stalled blocked-item signal (July 27, 2026)
+
+`cairn work blocked` gains two additive, read-time-only fields on each
+returned item; `readiness`/`reason` semantics for `ready` items and for
+non-stalled `blocked` items are unchanged.
+
+- `stalled` (boolean) and `daysSinceLastBlockerActivity` (integer, whole
+  days) are computed at read time from existing audit history. No new
+  migration, stored column, or "session" concept was introduced — Cairn's
+  work domain has no session table, so elapsed wall-clock time against
+  existing `updated_at`/audit-event timestamps is the deterministic proxy.
+- "Blocker activity" is the most recent timestamp across the blocked
+  item's own history and each of its still-open blockers' own history,
+  whichever is more recent. In practice this is `max(item.updatedAt,
+  ...blockers.map(b => b.updatedAt))`, since every audit-producing
+  mutation (status changes, updates, labels, notes, comments, dependency
+  edges) advances a work item's `updatedAt` and `revision` together in the
+  same transaction (see "Storage and aggregate revision" above) — so
+  `updatedAt` is already equivalent to the latest event timestamp without
+  re-querying `work_item_events`.
+- The default staleness threshold is **30 days** with no activity across
+  that blocker chain. `cairn work blocked` accepts an optional
+  `--stalled-after-days <n>` override, validated as a positive integer.
+  `cairn work ready --explain` does not gain the flag: a `ready` item by
+  definition has no active blockers, so there is no blocker chain to
+  evaluate staleness against.
+- Unlike most other `work` CLI argument validation (which bubbles to the
+  top-level handler and exits `1`), an invalid `--stalled-after-days`
+  value is caught locally in the CLI dispatcher and exits `2`, matching
+  the convention already used by `context search`/`prime` and the
+  cross-domain `search` command for invalid query/limit input. This is a
+  narrow, intentional exception scoped to the new flag; it does not change
+  the exit code of any pre-existing `work` validation path.
+- Implementation: `computeBlockedStaleness` and `DEFAULT_STALLED_AFTER_DAYS`
+  live in `src/work/work-item.ts` as pure domain logic; `listBlockedWork`
+  in `src/work/work-service.ts` wires them into the same blocker list
+  already assembled for `--explain`/`work blocked` (`repository.listBlocked`),
+  rather than re-deriving the blocker chain.

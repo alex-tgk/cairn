@@ -209,6 +209,58 @@ export function parseWorkItemStatus(value: string): WorkItemStatus {
   }
 }
 
+/**
+ * Default number of days of no activity across a blocked item's own
+ * history and its active blockers' history before it is surfaced as
+ * "stalled". See ADR 0008's amendment on the stalled-blocked signal.
+ */
+export const DEFAULT_STALLED_AFTER_DAYS = 30;
+
+export function parseStalledAfterDays(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new WorkItemValidationError(
+      "Stalled-after-days threshold must be a positive integer",
+    );
+  }
+  return parsed;
+}
+
+export type WorkBlockedStaleness = Readonly<{
+  daysSinceLastBlockerActivity: number;
+  stalled: boolean;
+}>;
+
+/**
+ * Derives a read-time-only staleness signal for a blocked work item from
+ * existing audit history, with no new storage. "Blocker activity" is the
+ * most recent event timestamp across the item's own history (`updatedAt`,
+ * which every audit-producing mutation advances) and each still-open
+ * blocker's own history (also its `updatedAt`), whichever is more recent.
+ */
+export function computeBlockedStaleness(
+  item: WorkItem,
+  blockers: readonly WorkItem[],
+  now: string,
+  stalledAfterDays: number = DEFAULT_STALLED_AFTER_DAYS,
+): WorkBlockedStaleness {
+  const activityTimestamps = [
+    item.updatedAt,
+    ...blockers.map((blocker) => blocker.updatedAt),
+  ];
+  const lastActivityMs = Math.max(
+    ...activityTimestamps.map((timestamp) => new Date(timestamp).getTime()),
+  );
+  const elapsedMs = Math.max(0, new Date(now).getTime() - lastActivityMs);
+  const daysSinceLastBlockerActivity = Math.floor(
+    elapsedMs / (24 * 60 * 60 * 1000),
+  );
+  return {
+    daysSinceLastBlockerActivity,
+    stalled: daysSinceLastBlockerActivity >= stalledAfterDays,
+  };
+}
+
 export type WorkItem = Readonly<{
   assignee: string | null;
   claimedAt: string | null;

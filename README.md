@@ -47,6 +47,7 @@ bun run build
 ./dist/cairn work dep add <blocked-id> <blocker-id>
 ./dist/cairn work dep list <blocked-id>
 ./dist/cairn work blocked
+./dist/cairn work blocked --stalled-after-days 14
 ./dist/cairn work ready --explain
 ./dist/cairn work show <work-item-id>
 ./dist/cairn work update <work-item-id> --priority 0 --assignee agent-name
@@ -127,6 +128,7 @@ Memory scope: a memory is either `project` (tied to the current repo) or `person
 | Work capture, editing, listing, lifecycle, and history | Implemented |
 | Arbitrary-depth, single-parent work hierarchy | Implemented |
 | Blocking dependencies and ready/blocked explanations | Implemented |
+| Stalled blocked-item signal (`stalled`, `daysSinceLastBlockerActivity`, `--stalled-after-days`) | Implemented |
 | Comments, labels, and notes | Implemented |
 | List, ready, and blocked filtering | Implemented |
 | Durable memory capture, topics, scopes, list, and search | Implemented |
