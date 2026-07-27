@@ -108,11 +108,16 @@ pre {
   background: var(--cairn-code-bg);
   border-radius: 8px;
   padding: 20px;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 pre code {
   background: transparent;
   color: #e6f1ee;
+  white-space: pre;
+  display: block;
 }
 
 table {
