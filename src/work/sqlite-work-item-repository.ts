@@ -148,6 +148,23 @@ function buildFilterCondition(projectId: string, filter: WorkItemFilter) {
         AND label_row.label = ${label}
     )`);
   }
+  if (filter.cursor !== undefined) {
+    const { createdAt, id, priority } = filter.cursor;
+    // Seeks strictly past the cursor's sort-key tuple, matching listing's
+    // `ORDER BY item.priority ASC, item.created_at ASC, item.id ASC` and the
+    // trailing (priority, created_at, id) columns of
+    // work_items_project_order_index, so a page boundary becomes an indexed
+    // comparison instead of an OFFSET-based re-scan.
+    conditions.push(sql`(
+      item.priority > ${priority}
+      OR (item.priority = ${priority} AND item.created_at > ${createdAt})
+      OR (
+        item.priority = ${priority}
+        AND item.created_at = ${createdAt}
+        AND item.id > ${id}
+      )
+    )`);
+  }
   return sql.join(conditions, sql` AND `);
 }
 

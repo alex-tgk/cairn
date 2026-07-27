@@ -43,7 +43,7 @@ async function findImportedByLabel(
   label: string,
 ): Promise<WorkItemView | undefined> {
   const existing = await listWork({ ...context(options), labels: [label] });
-  return existing[0];
+  return existing.items[0];
 }
 
 export type ImportedWorkItem = Readonly<{

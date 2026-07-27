@@ -88,17 +88,17 @@ describe("memory staleness in the memory service", () => {
       ...workspace,
       now: () => justPastThreshold,
     });
-    expect(listed).toHaveLength(1);
-    expect(listed[0]?.stale).toBe(true);
-    expect(listed[0]?.ageDays).toBe(DEFAULT_STALE_AFTER_DAYS + 1);
+    expect(listed.items).toHaveLength(1);
+    expect(listed.items[0]?.stale).toBe(true);
+    expect(listed.items[0]?.ageDays).toBe(DEFAULT_STALE_AFTER_DAYS + 1);
 
     const searched = await searchMemories({
       ...workspace,
       now: () => justPastThreshold,
       query: "refresh tokens",
     });
-    expect(searched).toHaveLength(1);
-    expect(searched[0]?.stale).toBe(true);
+    expect(searched.items).toHaveLength(1);
+    expect(searched.items[0]?.stale).toBe(true);
   });
 
   test("a custom --stale-after-days threshold overrides the default", async () => {
@@ -120,15 +120,15 @@ describe("memory staleness in the memory service", () => {
       ...workspace,
       now: () => in10Days,
     });
-    expect(listedWithDefault[0]?.stale).toBe(false);
+    expect(listedWithDefault.items[0]?.stale).toBe(false);
 
     const listedWithCustomThreshold = await listMemories({
       ...workspace,
       now: () => in10Days,
       staleAfterDays: 5,
     });
-    expect(listedWithCustomThreshold[0]?.stale).toBe(true);
-    expect(listedWithCustomThreshold[0]?.ageDays).toBe(10);
+    expect(listedWithCustomThreshold.items[0]?.stale).toBe(true);
+    expect(listedWithCustomThreshold.items[0]?.ageDays).toBe(10);
   });
 
   test("pinned memories are never stale, even far past the threshold", async () => {

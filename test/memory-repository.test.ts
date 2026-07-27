@@ -289,7 +289,7 @@ describe("SQLite memory repository", () => {
 
     const results = await repository.search(PROJECT_ID, "refresh tokens");
     expect(results).toHaveLength(1);
-    expect(results[0]?.title.toString()).toBe("Auth model");
+    expect(results[0]?.memory.title.toString()).toBe("Auth model");
 
     await queryDatabase.close();
   });

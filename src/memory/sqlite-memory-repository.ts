@@ -19,11 +19,13 @@ import {
   type Memory,
   type MemoryEventDraft,
   type MemoryScope,
+  type MemorySearchCursor,
   type MemoryTransition,
 } from "./memory.ts";
 import type {
   MemoryFilter,
   MemoryRepository,
+  MemorySearchResult,
   MemoryTimeline,
 } from "./memory-repository.ts";
 
@@ -68,7 +70,43 @@ function buildFilterCondition(projectId: string, filter: MemoryFilter | undefine
   if (filter?.topic !== undefined) {
     conditions.push(sql`memories.topic = ${filter.topic}`);
   }
+  if (filter?.cursor !== undefined) {
+    const { createdAt, id } = filter.cursor;
+    // Seeks strictly past the cursor's sort-key tuple, matching
+    // `listByProject`'s `ORDER BY created_at DESC, id DESC` and the
+    // trailing (created_at, id) columns of
+    // memories_scope_project_archived_order_index, so a page boundary is
+    // an indexed comparison rather than an OFFSET re-scan.
+    conditions.push(sql`(
+      memories.created_at < ${createdAt}
+      OR (memories.created_at = ${createdAt} AND memories.id < ${id})
+    )`);
+  }
   return sql.join(conditions, sql` AND `);
+}
+
+function searchCursorCondition(cursor: MemorySearchCursor | undefined) {
+  if (cursor === undefined) {
+    return sql`1 = 1`;
+  }
+  const { createdAt, id, rank } = cursor;
+  // Seeks strictly past the cursor's (rank, created_at, id) tuple, matching
+  // `search`'s `ORDER BY search_entries_fts.rank, memories.created_at DESC,
+  // memories.id DESC`. See the `MemorySearchCursor` doc comment in
+  // memory.ts and ADR 0011 for why this is deterministic but not an
+  // indexed keyset seek the way memory list's cursor is.
+  return sql`(
+    search_entries_fts.rank > ${rank}
+    OR (
+      search_entries_fts.rank = ${rank}
+      AND memories.created_at < ${createdAt}
+    )
+    OR (
+      search_entries_fts.rank = ${rank}
+      AND memories.created_at = ${createdAt}
+      AND memories.id < ${id}
+    )
+  )`;
 }
 
 function limitClause(filter: MemoryFilter | undefined) {
@@ -294,21 +332,23 @@ export class SqliteMemoryRepository implements MemoryRepository {
     projectId: string,
     query: string,
     filter?: MemoryFilter,
-  ): Promise<readonly Memory[]> {
+  ): Promise<readonly MemorySearchResult[]> {
     const condition = buildFilterCondition(projectId, filter);
+    const cursorCondition = searchCursorCondition(filter?.searchCursor);
     const limit = limitClause(filter);
-    const rows = await sql<MemoryRow>`
-      SELECT memories.*
+    const rows = await sql<MemoryRow & { rank: number }>`
+      SELECT memories.*, search_entries_fts.rank AS rank
       FROM search_entries_fts
       JOIN search_entries ON search_entries.id = search_entries_fts.rowid
       JOIN memories ON memories.id = search_entries.entity_id
       WHERE search_entries.entity_kind = 'memory'
         AND search_entries_fts MATCH ${query}
         AND ${condition}
+        AND ${cursorCondition}
       ORDER BY search_entries_fts.rank, memories.created_at DESC, memories.id DESC
       ${limit}
     `.execute(this.database.queries);
-    return rows.rows.map(mapMemory);
+    return rows.rows.map((row) => ({ memory: mapMemory(row), rank: row.rank }));
   }
 
   private async insertMemory(

@@ -1,3 +1,5 @@
+import { CursorDecodeError, decodeCursor, encodeCursor } from "../shared/cursor.ts";
+
 export const WORK_ITEM_TYPES = [
   "task",
   "bug",
@@ -224,6 +226,47 @@ export function parseStalledAfterDays(value: string): number {
     );
   }
   return parsed;
+}
+
+/**
+ * Opaque keyset-pagination cursor for `work list`, matching the trailing
+ * `(priority, created_at, id)` tuple of the `work_items_project_order_index`
+ * (migration 2) and `listByProject`'s `ORDER BY item.priority ASC,
+ * item.created_at ASC, item.id ASC` clause. Encoding the exact sort-key
+ * tuple of the last row on a page (rather than an offset) lets the next
+ * page seek directly via an indexed comparison instead of re-scanning
+ * already-returned rows.
+ */
+export type WorkItemCursor = Readonly<{
+  createdAt: string;
+  id: string;
+  priority: number;
+}>;
+
+export function encodeWorkItemCursor(cursor: WorkItemCursor): string {
+  return encodeCursor(cursor);
+}
+
+export function decodeWorkItemCursor(token: string): WorkItemCursor {
+  let payload: Readonly<Record<string, unknown>>;
+  try {
+    payload = decodeCursor(token);
+  } catch (error) {
+    throw new WorkItemValidationError(
+      error instanceof CursorDecodeError ? error.message : "Invalid cursor",
+    );
+  }
+  const { createdAt, id, priority } = payload;
+  if (typeof createdAt !== "string" || createdAt.length === 0) {
+    throw new WorkItemValidationError("Cursor createdAt must be a non-empty string");
+  }
+  if (typeof id !== "string" || id.length === 0) {
+    throw new WorkItemValidationError("Cursor id must be a non-empty string");
+  }
+  if (typeof priority !== "number" || !Number.isInteger(priority)) {
+    throw new WorkItemValidationError("Cursor priority must be an integer");
+  }
+  return { createdAt, id, priority };
 }
 
 export type WorkBlockedStaleness = Readonly<{
