@@ -7,10 +7,13 @@
 > `docs/roadmap.md`), not committed roadmap items — triage before promoting
 > anything here into `roadmap.md` or a new ADR.
 
-See [talk-context-efficiency-slides.md](talk-context-efficiency-slides.md)
-for the slide deck built from these notes (Marp-formatted markdown; render
-with `npx @marp-team/marp-cli talk-context-efficiency-slides.md -o slides.html`
-or the Marp VS Code extension).
+See [talk-build-your-own-vs-cairn-slides.md](talk-build-your-own-vs-cairn-slides.md)
+for the current slide deck (Marp-formatted markdown; render with
+`npx @marp-team/marp-cli talk-build-your-own-vs-cairn-slides.md --theme-set docs/assets/cairn-talk-theme.css --html -o slides.html`
+or the Marp VS Code extension). The deck's narrative diverged from these
+notes — it now walks through building a local agent-memory system by hand
+before introducing Cairn as the alternative — but the staleness/token-
+efficiency reasoning captured here still underpins several slides.
 
 ## Context: what prompted this
 

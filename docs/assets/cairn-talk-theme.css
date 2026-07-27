@@ -168,7 +168,9 @@ section.closing {
 section.title p,
 section.title li,
 section.closing p,
-section.closing li {
+section.closing li,
+section.title h3,
+section.closing h3 {
   color: #c9d6dc;
 }
 
