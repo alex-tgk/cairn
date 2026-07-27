@@ -150,8 +150,12 @@ epic (`cairn work show 31d034d6 --json`), sourced from
   implementation)
 - Backlink memories to the work items/context they explain
 - Expose per-result index staleness in `context search`
-- Cursor-based pagination for `work list` / `memory search`
 - Cross-referencing confidence signal for stalled `blocked` items
+
+Promoted and implemented:
+
+- Cursor-based (keyset) pagination for `work list`, `memory list`, and
+  `memory search` (ADR 0011; branch `feature/cursor-pagination`)
 
 Promote an item into a slice above (and file/amend an ADR if it changes a
 domain contract) before starting implementation.

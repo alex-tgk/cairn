@@ -43,6 +43,7 @@ bun run build
 ./dist/cairn work list
 ./dist/cairn work list --status open --type bug --assignee agent-name
 ./dist/cairn work list --label urgent --label backend --limit 5
+./dist/cairn work list --limit 5 --cursor <token-from-previous-page's-nextCursor>
 ./dist/cairn work tree [<root-id>]
 ./dist/cairn work dep add <blocked-id> <blocker-id>
 ./dist/cairn work dep list <blocked-id>
@@ -65,8 +66,10 @@ bun run build
 ./dist/cairn memory show <memory-id>
 ./dist/cairn memory list --type architecture --scope project
 ./dist/cairn memory list --stale-after-days 30
+./dist/cairn memory list --limit 10 --cursor <token-from-previous-page's-nextCursor>
 ./dist/cairn memory search "refresh tokens"
 ./dist/cairn memory search "refresh tokens" --stale-after-days 30
+./dist/cairn memory search "refresh tokens" --limit 10 --cursor <token-from-previous-page's-nextCursor>
 ./dist/cairn memory relate <memory-id> <related-memory-id>
 ./dist/cairn memory relations <memory-id>
 ./dist/cairn memory unrelate <memory-id> <related-memory-id>
@@ -108,6 +111,8 @@ Memory scope: a memory is either `project` (tied to the current repo) or `person
 
 Memory staleness: every memory read (`show`, `list`, `search`, `sessions`, `context`) reports a derived `ageDays` (whole days since `updatedAt`) and a `stale` boolean, computed at read time and never stored. A memory is stale once its age exceeds 90 days by default; `pinned` memories are never stale regardless of age, since a pin is an explicit "keep fresh" signal. Override the threshold per query with `--stale-after-days <n>` on `memory list` and `memory search` (and `memory sessions`).
 
+Cursor pagination: `work list`, `memory list`, and `memory search` accept `--cursor <token>` alongside `--limit` to resume from where a previous page left off, instead of re-scanning from the start. JSON output includes a `nextCursor` field (a string, or `null` when there is no further page); text output prints a `next: --cursor <token>` hint line when another page is available. Cursors are opaque, base64url-encoded tokens keyed to that command's existing deterministic order (`priority, createdAt, id` for `work list`; `createdAt, id` for `memory list`; FTS5 `rank, createdAt, id` for `memory search`) — do not construct one by hand, and a cursor from one command cannot be reused with another. A malformed or mismatched cursor fails validation the same way an invalid `--limit` does (exit code 1), rather than crashing or silently restarting at page one. See [ADR 0011](docs/decisions/0011-cursor-based-pagination.md) for the full keyset-pagination contract, including the FTS5-rank determinism-vs-indexed-seek tradeoff for `memory search`. Note: `listWork`, `listMemories`, and `searchMemories` now return `{ items, nextCursor }` instead of a bare array — a breaking change for any internal or scripted consumer of those functions/JSON shapes.
+
 ## Accepted direction
 
 | Topic | Decision |
@@ -135,6 +140,7 @@ Memory staleness: every memory read (`show`, `list`, `search`, `sessions`, `cont
 | Stalled blocked-item signal (`stalled`, `daysSinceLastBlockerActivity`, `--stalled-after-days`) | Implemented |
 | Comments, labels, and notes | Implemented |
 | List, ready, and blocked filtering | Implemented |
+| Cursor-based (keyset) pagination for `work list`, `memory list`, and `memory search` | Implemented |
 | Durable memory capture, topics, scopes, list, and search | Implemented |
 | Memory relations and timeline context | Implemented |
 | Memory pin/archive state, session-summary listing, and context primer | Implemented |

@@ -210,6 +210,38 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   `computeBlockedStaleness`/`DEFAULT_STALLED_AFTER_DAYS`
   (`src/work/work-item.ts`), wired in `listBlockedWork`
   (`src/work/work-service.ts`).
+- Cursor-based (keyset) pagination for `work list`, `memory list`, and
+  `memory search` (branch `feature/cursor-pagination`, on top of the epic
+  tracked as roadmap backlog `31d034d6`, per ADR 0011). No new migration:
+  seeks reuse the trailing columns of existing indexes
+  (`work_items_project_order_index` for work; the migration-7 memory list
+  index for memory list). A shared, domain-agnostic opaque cursor codec
+  (`src/shared/cursor.ts`, base64url + JSON) is wrapped by each domain's own
+  typed cursor payload and validation (`WorkItemCursor` in
+  `src/work/work-item.ts`; `MemoryListCursor`/`MemorySearchCursor` in
+  `src/memory/memory.ts`), so a malformed cursor fails the same way an
+  invalid `--limit` does (domain validation error, CLI exit 1), not a crash.
+  `listWork`, `listMemories`, and `searchMemories` now do a limit+1
+  lookahead and return `{ items, nextCursor }` instead of a bare array — a
+  deliberate breaking change to those three functions, with every caller
+  (CLI rendering, the migration importer's duplicate-label lookup, and all
+  existing tests) updated in the same change. `--cursor <token>` is wired
+  on `work list`, `memory list`, and `memory search`; JSON responses carry
+  `nextCursor` (`null` at the end); text output prints a `next: --cursor
+  <token>` hint line. Memory `search()`'s repository return type changed to
+  `{ memory, rank }[]` since the search cursor needs FTS5's rank value.
+  Memory search's cursor seeks on `rank` (SQLite's BM25 relevance, not a
+  stored/indexed column) tied-broken by `created_at, id`: deterministic
+  (never skips/duplicates a row) but not an indexed jump — documented as an
+  accepted efficiency tradeoff in ADR 0011, not a correctness gap. `work
+  ready`/`work blocked` share `WorkItemFilter`/`buildFilterCondition` with
+  `work list`, so they silently accept a `--cursor` value through that
+  shared plumbing, but neither exposes a documented `--cursor` flag nor
+  computes a `nextCursor` — an intentional-but-undocumented byproduct of
+  code sharing, not a supported feature of `ready`/`blocked`. New tests:
+  `test/work-pagination.test.ts` and `test/memory-pagination.test.ts`
+  (repository-level seek/tiebreak behavior, service-level first/middle/last
+  page, malformed-cursor rejection, and determinism).
 
 ## Not implemented
 
