@@ -3,6 +3,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type {
+  ContextSourceConfig,
+  LoadedContextConfig,
+} from "../src/context/context-config.ts";
+import type { DiscoveredContextFile } from "../src/context/context-discovery.ts";
+import { SqliteContextIndexRepository } from "../src/context/sqlite-context-index-repository.ts";
 import {
   openCairnDatabase,
   registerProjectWorkspace,
@@ -208,6 +214,118 @@ describe("SQLite unified search repository", () => {
       terms: ["auth"],
     });
     expect(emptyScopes).toHaveLength(0);
+
+    await database.close();
+  });
+
+  test("surfaces indexedAt/contentHash for context rows and omits them for work/memory rows", async () => {
+    const { database, insertEntry, rawDatabase, repository } = createHarness();
+
+    const contextRepository = new SqliteContextIndexRepository(
+      new CairnQueryDatabase(rawDatabase),
+      {
+        idFactory: (() => {
+          const ids = ["source-1", "run-1", "document-a"];
+          let index = 0;
+          return () => {
+            const id = ids[index];
+            index += 1;
+            if (id === undefined) {
+              throw new Error("Deterministic id sequence exhausted");
+            }
+            return id;
+          };
+        })(),
+        nowFactory: (() => {
+          const times = [
+            "2026-07-14T13:00:00.000Z",
+            "2026-07-14T14:00:00.000Z",
+            "2026-07-14T14:01:00.000Z",
+          ];
+          let index = 0;
+          return () => {
+            const value = times[index];
+            index += 1;
+            if (value === undefined) {
+              throw new Error("Deterministic time sequence exhausted");
+            }
+            return value;
+          };
+        })(),
+      },
+    );
+    const source: ContextSourceConfig = {
+      excludes: [],
+      includes: ["**/*.md"],
+      maxFileBytes: 1_000_000,
+      name: "project",
+      rootRelativePath: ".",
+    };
+    const loadedConfig: LoadedContextConfig = {
+      config: { sources: [source], version: 1 },
+      fingerprint: "config-hash-1",
+      path: "/projects/cairn/.cairn/context.toml",
+      usesDefaults: true,
+    };
+    const upsertedSource = await contextRepository.upsertSource({
+      loadedConfig,
+      projectId: PROJECT_ID,
+      source,
+    });
+    const file: DiscoveredContextFile = {
+      absolutePath: "/projects/cairn/auth.md",
+      byteSize: Buffer.byteLength("The auth flow uses refresh tokens."),
+      content: "The auth flow uses refresh tokens.",
+      contentHash: "hash-auth",
+      relativePath: "auth.md",
+    };
+    await contextRepository.applyIndex({
+      files: [file],
+      mode: "rebuild",
+      projectId: PROJECT_ID,
+      skippedCount: 0,
+      sourceId: upsertedSource.id,
+      workspaceId: WORKSPACE_ID,
+    });
+
+    insertEntry({
+      body: "Fix the auth flow regression in login.",
+      entityId: "work-1",
+      entityKind: "work_item",
+      tags: "bug open",
+      title: "Fix auth flow bug",
+    });
+    insertEntry({
+      body: "We rotate refresh tokens on every login for the auth flow.",
+      entityId: "memory-1",
+      entityKind: "memory",
+      tags: "decision project",
+      title: "Auth decision",
+    });
+
+    const matches = await repository.search({
+      ftsQuery: '"auth" OR "flow"',
+      kinds: undefined,
+      limit: 20,
+      scopes: [{ projectId: PROJECT_ID, workspaceId: WORKSPACE_ID }],
+      terms: ["auth", "flow"],
+    });
+
+    expect(matches).toHaveLength(3);
+    const contextMatch = matches.find(
+      (match) => match.entityKind === "context_document",
+    );
+    expect(contextMatch).toMatchObject({
+      contentHash: "hash-auth",
+      indexedAt: "2026-07-14T14:00:00.000Z",
+    });
+
+    const workMatch = matches.find((match) => match.entityKind === "work_item");
+    const memoryMatch = matches.find((match) => match.entityKind === "memory");
+    expect(workMatch?.contentHash).toBeUndefined();
+    expect(workMatch?.indexedAt).toBeUndefined();
+    expect(memoryMatch?.contentHash).toBeUndefined();
+    expect(memoryMatch?.indexedAt).toBeUndefined();
 
     await database.close();
   });

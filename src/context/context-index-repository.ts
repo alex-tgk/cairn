@@ -89,7 +89,9 @@ export type SearchContextDocumentsInput = Readonly<{
 }>;
 
 export type ContextSearchMatch = Readonly<{
+  contentHash: string;
   documentId: string;
+  indexedAt: string;
   matchedTerms: readonly string[];
   projectId: string;
   relativePath: string;

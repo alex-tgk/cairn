@@ -881,6 +881,7 @@ function printContextSearchResult(
     console.log(`${match.relativePath} [${match.projectId}/${match.workspaceId}]`);
     console.log(`  tags: ${match.tags.join(", ") || "(none)"}`);
     console.log(`  matched: ${match.matchedTerms.join(", ") || "(none)"}`);
+    console.log(`  as of: ${match.indexedAt} (${match.contentHash})`);
     console.log(`  ${match.snippet}`);
   }
 }
@@ -958,6 +959,9 @@ function printSearchResult(result: SearchResultView, json: boolean): void {
     console.log(`[${match.entityKind}] ${label} (${match.entityId}) [${scope}]`);
     console.log(`  tags: ${match.tags.join(", ") || "(none)"}`);
     console.log(`  matched: ${match.matchedTerms.join(", ") || "(none)"}`);
+    if (match.indexedAt !== undefined && match.contentHash !== undefined) {
+      console.log(`  as of: ${match.indexedAt} (${match.contentHash})`);
+    }
     console.log(`  ${match.snippet}`);
   }
 }

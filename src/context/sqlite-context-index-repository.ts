@@ -33,7 +33,9 @@ type ContextIndexRunRow = Selectable<ContextIndexRunTable>;
 
 type ContextSearchRow = Readonly<{
   body: string;
+  content_hash: string;
   document_id: string;
+  indexed_at: string;
   project_id: string;
   relative_path: string;
   source_id: string;
@@ -129,7 +131,9 @@ function mapSearchMatch(
   );
 
   return {
+    contentHash: row.content_hash,
     documentId: row.document_id,
+    indexedAt: row.indexed_at,
     matchedTerms,
     projectId: row.project_id,
     relativePath: row.relative_path,
@@ -361,10 +365,15 @@ export class SqliteContextIndexRepository implements ContextIndexRepository {
         search_entries.tags AS tags,
         search_entries.body AS body,
         search_entries.source_path AS relative_path,
-        context_documents.source_id AS source_id
+        context_documents.source_id AS source_id,
+        context_documents.content_hash AS content_hash,
+        context_document_versions.indexed_at AS indexed_at
       FROM search_entries_fts
       JOIN search_entries ON search_entries.id = search_entries_fts.rowid
       JOIN context_documents ON context_documents.id = search_entries.entity_id
+      JOIN context_document_versions
+        ON context_document_versions.document_id = context_documents.id
+        AND context_document_versions.content_hash = context_documents.content_hash
       WHERE search_entries.entity_kind = 'context_document'
         AND search_entries_fts MATCH ${input.ftsQuery}
         AND (${scopeCondition})

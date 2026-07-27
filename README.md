@@ -91,6 +91,14 @@ bun run build
 
 Use `CAIRN_DATA_DIR` to override the data directory (default: `~/.cairn`) during development or testing.
 
+`cairn context search` and `cairn search` (for `context_document` rows) each
+include a per-result `contentHash` and `indexedAt` — the document's current
+content hash and the ISO-8601 timestamp its currently-active version was
+indexed at (see ADR 0009's amendment). Text output renders this as an
+`as of: <indexedAt> (<contentHash>)` line so an agent can judge a hit's
+freshness without a separate `context status` call; `work`/`memory` rows in
+`cairn search` omit these fields since they have no file-hash freshness model.
+
 Note: `cairn init` is optional — the first `work`, `memory`, or `context` command run in a project directory (one containing a `.git` root) initializes it automatically. Use `init` explicitly only if you want to set it up ahead of time or customize the project name.
 
 Memory scope: a memory is either `project` (tied to the current repo) or `personal` (user-level, visible from every project). When `--scope` is omitted, the default is derived from the type — `preference` defaults to `personal`, every other type defaults to `project` — and an explicit `--scope` always wins. Use `personal` for facts that follow you across repositories (tool and editor choices, style and workflow preferences); use `project` for facts about a specific codebase.
