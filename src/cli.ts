@@ -158,10 +158,10 @@ Usage:
   cairn memory show <id> [--path <path>] [--json]
   cairn memory list [--type <type>] [--scope <project|personal>]
                      [--topic <key>] [--limit <n>] [--include-archived]
-                     [--path <path>] [--json]
+                     [--stale-after-days <n>] [--path <path>] [--json]
   cairn memory search <query> [--type <type>] [--scope <project|personal>]
                        [--topic <key>] [--limit <n>] [--include-archived]
-                       [--path <path>] [--json]
+                       [--stale-after-days <n>] [--path <path>] [--json]
   cairn memory relate <id> <related-id> [--path <path>] [--json]
   cairn memory unrelate <id> <related-id> [--path <path>] [--json]
   cairn memory relations <id> [--path <path>] [--json]
@@ -171,7 +171,7 @@ Usage:
   cairn memory archive <id> [--path <path>] [--json]
   cairn memory unarchive <id> [--path <path>] [--json]
   cairn memory sessions [--scope <project|personal>] [--limit <n>]
-                        [--path <path>] [--json]
+                        [--stale-after-days <n>] [--path <path>] [--json]
   cairn memory context [--limit <n>] [--path <path>] [--json]
   cairn context refresh [--all] [--path <path>] [--json]
   cairn context rebuild [--all] [--path <path>] [--json]
@@ -723,6 +723,22 @@ async function runWorkCommand(
   throw new Error(`Unknown Cairn work command: ${action ?? ""}`);
 }
 
+function parseStaleAfterDaysOption(
+  arguments_: readonly string[],
+): number | undefined {
+  const value = optionValue(arguments_, "--stale-after-days");
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new MemoryValidationError(
+      "Stale-after-days must be a positive integer",
+    );
+  }
+  return parsed;
+}
+
 function memoryListFilter(arguments_: readonly string[]) {
   const typeValue = optionValue(arguments_, "--type");
   const scopeValue = optionValue(arguments_, "--scope");
@@ -739,6 +755,7 @@ function memoryListFilter(arguments_: readonly string[]) {
     includeArchived: hasFlag(arguments_, "--include-archived") || undefined,
     limit,
     scope: scopeValue === undefined ? undefined : parseMemoryScope(scopeValue),
+    staleAfterDays: parseStaleAfterDaysOption(arguments_),
     topic,
     type: typeValue === undefined ? undefined : parseMemoryType(typeValue),
   };
@@ -758,9 +775,9 @@ function printMemoryList(
   }
   for (const memory of memories) {
     const topic = memory.topic === null ? "" : ` #${memory.topic}`;
-    const markers = `${memory.pinned ? " 📌" : ""}${memory.archived ? " (archived)" : ""}`;
+    const markers = `${memory.pinned ? " 📌" : ""}${memory.archived ? " (archived)" : ""}${memory.stale ? " (stale)" : ""}`;
     console.log(
-      `${memory.shortId}: ${memory.title} [${memory.type}, ${memory.scope}]${topic}${markers}`,
+      `${memory.shortId}: ${memory.title} [${memory.type}, ${memory.scope}]${topic}${markers} (age: ${memory.ageDays}d)`,
     );
   }
 }
@@ -774,11 +791,17 @@ function printMemoryTimeline(
     return;
   }
   for (const memory of timeline.before) {
-    console.log(`  ${memory.shortId}: ${memory.title}`);
+    console.log(
+      `  ${memory.shortId}: ${memory.title}${memory.stale ? " (stale)" : ""}`,
+    );
   }
-  console.log(`> ${timeline.target.shortId}: ${timeline.target.title}`);
+  console.log(
+    `> ${timeline.target.shortId}: ${timeline.target.title}${timeline.target.stale ? " (stale)" : ""}`,
+  );
   for (const memory of timeline.after) {
-    console.log(`  ${memory.shortId}: ${memory.title}`);
+    console.log(
+      `  ${memory.shortId}: ${memory.title}${memory.stale ? " (stale)" : ""}`,
+    );
   }
 }
 
@@ -795,13 +818,15 @@ function printContextPrimer(
     console.log("  (none)");
   }
   for (const memory of primer.pinnedMemories) {
-    console.log(`  ${memory.shortId}: ${memory.title}`);
+    console.log(
+      `  ${memory.shortId}: ${memory.title}${memory.stale ? " (stale)" : ""}`,
+    );
   }
   console.log("Most recent session summary:");
   console.log(
     primer.recentSessionSummary === null
       ? "  (none)"
-      : `  ${primer.recentSessionSummary.shortId}: ${primer.recentSessionSummary.title}`,
+      : `  ${primer.recentSessionSummary.shortId}: ${primer.recentSessionSummary.title}${primer.recentSessionSummary.stale ? " (stale)" : ""}`,
   );
   console.log("Recent memories:");
   if (primer.recentMemories.length === 0) {
@@ -1185,6 +1210,7 @@ async function runMemoryCommand(
         limit,
         path,
         scope: scopeValue === undefined ? undefined : parseMemoryScope(scopeValue),
+        staleAfterDays: parseStaleAfterDaysOption(arguments_),
       }),
       json,
     );

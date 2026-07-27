@@ -85,6 +85,17 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   `preference` memories from project to personal (updating both `memories` and
   the shared search projection, with an audit event), and the context importer
   no longer hard-codes `scope: "project"`
+- Derived, read-time memory staleness signal (ADR 0010 amendment, no new
+  migration or stored column): every `MemoryView` now carries `ageDays`
+  (whole UTC days since `updatedAt`) and `stale` (age past a 90-day default
+  threshold), computed at read time in `src/memory/memory-staleness.ts` and
+  attached in `src/memory/memory-service.ts`. Pinned memories are never
+  stale regardless of age. `memory show`, `list`, `search`, `relations`,
+  `timeline`, `pin`/`unpin`/`archive`/`unarchive`, `sessions`, and `context`
+  all surface both fields in JSON and human-readable output. `memory list`,
+  `memory search`, and `memory sessions` accept `--stale-after-days <n>` to
+  override the threshold per query; staleness remains informational only
+  and does not affect ranking, ordering, or filtering
 - `ProjectStatus` now includes `workspaceId`, resolved from the registered
   workspace row rather than only the caller-generated id, so downstream
   domains (context) can address a workspace deterministically
