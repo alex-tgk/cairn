@@ -139,7 +139,10 @@ describe("Cairn CLI", () => {
     );
 
     expect(JSON.parse(shown.stdout)).toEqual(JSON.parse(created.stdout));
-    expect(JSON.parse(listed.stdout)).toEqual([JSON.parse(created.stdout)]);
+    expect(JSON.parse(listed.stdout)).toEqual({
+      items: [JSON.parse(created.stdout)],
+      nextCursor: null,
+    });
   });
 
   test("rejects an invalid work priority", () => {
@@ -824,7 +827,7 @@ describe("Cairn CLI", () => {
           dataDirectory,
         ).stdout,
       ),
-    ).toMatchObject([{ id: bug.id }]);
+    ).toMatchObject({ items: [{ id: bug.id }], nextCursor: null });
     expect(
       JSON.parse(
         runCli(
@@ -840,7 +843,7 @@ describe("Cairn CLI", () => {
           dataDirectory,
         ).stdout,
       ),
-    ).toMatchObject([{ id: bug.id }]);
+    ).toMatchObject({ items: [{ id: bug.id }], nextCursor: null });
     expect(
       JSON.parse(
         runCli(
@@ -856,7 +859,7 @@ describe("Cairn CLI", () => {
           dataDirectory,
         ).stdout,
       ),
-    ).toMatchObject([{ id: feature.id }]);
+    ).toMatchObject({ items: [{ id: feature.id }], nextCursor: null });
     expect(
       JSON.parse(
         runCli(
@@ -881,14 +884,33 @@ describe("Cairn CLI", () => {
         ).stdout,
       ),
     ).toMatchObject([{ id: feature.id }]);
-    expect(
-      JSON.parse(
-        runCli(
-          ["work", "list", "--limit", "1", "--path", workspace, "--json"],
-          dataDirectory,
-        ).stdout,
-      ),
-    ).toHaveLength(1);
+    const firstPage = JSON.parse(
+      runCli(
+        ["work", "list", "--limit", "1", "--path", workspace, "--json"],
+        dataDirectory,
+      ).stdout,
+    ) as { items: readonly unknown[]; nextCursor: string | null };
+    expect(firstPage.items).toHaveLength(1);
+    expect(firstPage.nextCursor).not.toBeNull();
+
+    const secondPage = JSON.parse(
+      runCli(
+        [
+          "work",
+          "list",
+          "--limit",
+          "1",
+          "--cursor",
+          firstPage.nextCursor ?? "",
+          "--path",
+          workspace,
+          "--json",
+        ],
+        dataDirectory,
+      ).stdout,
+    ) as { items: readonly unknown[]; nextCursor: string | null };
+    expect(secondPage.items).toHaveLength(1);
+    expect(secondPage.nextCursor).toBeNull();
   });
 
   test("saves, upserts by topic, lists, and searches memories", () => {
@@ -965,9 +987,9 @@ describe("Cairn CLI", () => {
     const listed = JSON.parse(
       runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory)
         .stdout,
-    ) as readonly { title: string }[];
-    expect(listed.map((memory) => memory.title)).toContain("Auth model v2");
-    expect(listed.map((memory) => memory.title)).toContain(
+    ) as { items: readonly { title: string }[]; nextCursor: string | null };
+    expect(listed.items.map((memory) => memory.title)).toContain("Auth model v2");
+    expect(listed.items.map((memory) => memory.title)).toContain(
       "Prefers concise commits",
     );
 
@@ -976,18 +998,18 @@ describe("Cairn CLI", () => {
         ["memory", "list", "--scope", "personal", "--path", workspace, "--json"],
         dataDirectory,
       ).stdout,
-    ) as readonly { title: string }[];
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0]?.title).toBe("Prefers concise commits");
+    ) as { items: readonly { title: string }[]; nextCursor: string | null };
+    expect(filtered.items).toHaveLength(1);
+    expect(filtered.items[0]?.title).toBe("Prefers concise commits");
 
     const searched = JSON.parse(
       runCli(
         ["memory", "search", "refresh tokens", "--path", workspace, "--json"],
         dataDirectory,
       ).stdout,
-    ) as readonly { title: string }[];
-    expect(searched).toHaveLength(1);
-    expect(searched[0]?.title).toBe("Auth model v2");
+    ) as { items: readonly { title: string }[]; nextCursor: string | null };
+    expect(searched.items).toHaveLength(1);
+    expect(searched.items[0]?.title).toBe("Auth model v2");
   });
 
   test("defaults a preference to personal scope and other types to project", () => {
@@ -1189,16 +1211,16 @@ describe("Cairn CLI", () => {
     const listedWithoutArchived = JSON.parse(
       runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory)
         .stdout,
-    ) as readonly { title: string }[];
-    expect(listedWithoutArchived).toHaveLength(0);
+    ) as { items: readonly { title: string }[]; nextCursor: string | null };
+    expect(listedWithoutArchived.items).toHaveLength(0);
 
     const listedWithArchived = JSON.parse(
       runCli(
         ["memory", "list", "--include-archived", "--path", workspace, "--json"],
         dataDirectory,
       ).stdout,
-    ) as readonly { title: string }[];
-    expect(listedWithArchived).toHaveLength(1);
+    ) as { items: readonly { title: string }[]; nextCursor: string | null };
+    expect(listedWithArchived.items).toHaveLength(1);
 
     const unarchived = JSON.parse(
       runCli(
@@ -1213,7 +1235,7 @@ describe("Cairn CLI", () => {
         runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory)
           .stdout,
       ),
-    ).toHaveLength(1);
+    ).toMatchObject({ items: [{ id: saved.id }], nextCursor: null });
   });
 
   test("lists session summaries and builds a context primer", () => {
@@ -1319,18 +1341,18 @@ describe("Cairn CLI", () => {
     const listed = JSON.parse(
       runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory)
         .stdout,
-    ) as readonly { ageDays: number; stale: boolean }[];
-    expect(listed[0]?.ageDays).toBe(0);
-    expect(listed[0]?.stale).toBe(false);
+    ) as { items: readonly { ageDays: number; stale: boolean }[] };
+    expect(listed.items[0]?.ageDays).toBe(0);
+    expect(listed.items[0]?.stale).toBe(false);
 
     const searched = JSON.parse(
       runCli(
         ["memory", "search", "freshly saved", "--path", workspace, "--json"],
         dataDirectory,
       ).stdout,
-    ) as readonly { ageDays: number; stale: boolean }[];
-    expect(searched).toHaveLength(1);
-    expect(searched[0]?.stale).toBe(false);
+    ) as { items: readonly { ageDays: number; stale: boolean }[] };
+    expect(searched.items).toHaveLength(1);
+    expect(searched.items[0]?.stale).toBe(false);
 
     const listedText = runCli(
       ["memory", "list", "--path", workspace],
@@ -1352,8 +1374,8 @@ describe("Cairn CLI", () => {
         ["memory", "list", "--stale-after-days", "1000", "--path", workspace, "--json"],
         dataDirectory,
       ).stdout,
-    ) as readonly { stale: boolean }[];
-    expect(withCustomThreshold[0]?.stale).toBe(false);
+    ) as { items: readonly { stale: boolean }[] };
+    expect(withCustomThreshold.items[0]?.stale).toBe(false);
   });
 
   test("returns a non-zero result outside a Cairn project", () => {
