@@ -11,7 +11,7 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
 - Homebrew: `brew install alex-tgk/tap/cairn`
 - Runtime: Bun 1.3.14 with strict TypeScript
 - Storage: SQLite through Kysely 0.28.17 and Cairn's deterministic `bun:sqlite` dialect
-- Verification: 141 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
+- Verification: 176 tests, type checking, compiled-binary smoke test, and green macOS, Linux, and Windows CI
 
 ## Implemented
 
@@ -96,6 +96,25 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   `memory search`, and `memory sessions` accept `--stale-after-days <n>` to
   override the threshold per query; staleness remains informational only
   and does not affect ranking, ordering, or filtering
+- Memory-to-work-item and memory-to-context-document backlinks (ADR 0010
+  amendment, migration 9): `memory_work_links` and `memory_context_links`
+  tables let a memory point at the work item it resolves or the context
+  document (indexed file) it explains. `memory link-work`/`unlink-work`
+  resolve the target the same way work-item references resolve elsewhere
+  (exact id or an unambiguous id prefix); `memory link-context`/
+  `unlink-context` resolve by the document's id or its indexed relative
+  path. Both link kinds are idempotent (linking twice is a no-op) and
+  validated against the current project before writing. `memory show`
+  always includes `linkedWorkItems`/`linkedContextDocuments` arrays in
+  JSON and human-readable output; other memory read paths (`list`,
+  `search`, `relations`, `timeline`) intentionally do not carry these
+  fields, to keep this slice reviewable. The memory infrastructure adapter
+  (`SqliteMemoryRepository`) reads `work_items`/`context_documents`
+  directly for existence/reference resolution (read-only, no writes) since
+  Cairn's domains share one physical database; all writes stay confined to
+  the memory-owned link tables. The reverse lookup (surfacing linked
+  memories from `work show`/`context search`) is deferred — see
+  `docs/roadmap.md`. Implemented on branch `feature/memory-backlinks`
 - `ProjectStatus` now includes `workspaceId`, resolved from the registered
   workspace row rather than only the caller-generated id, so downstream
   domains (context) can address a workspace deterministically

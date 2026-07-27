@@ -148,7 +148,19 @@ epic (`cairn work show 31d034d6 --json`), sourced from
 
 - Memory staleness/decay signal (needs an ADR amendment to ADR 0010 before
   implementation)
-- Backlink memories to the work items/context they explain
+- [x] Backlink memories to the work items/context they explain (ADR 0010
+      amendment, migration 9: `memory link-work`/`unlink-work`,
+      `memory link-context`/`unlink-context`, surfaced on `memory show` as
+      `linkedWorkItems`/`linkedContextDocuments`). Implemented on branch
+      `feature/memory-backlinks`.
+- Reverse backlink surfacing: show which memories reference a given work
+  item from `cairn work show`, and which memories reference a given
+  context document from `cairn context search`/`cairn search`. Deliberately
+  deferred from the memory-backlinks slice above to keep that slice
+  reviewable; would need `work-service.ts`/`context-service.ts` (or their
+  repositories) to read `memory_work_links`/`memory_context_links`, which
+  are currently owned and only read from the memory domain's
+  `SqliteMemoryRepository`.
 - Expose per-result index staleness in `context search`
 - Cursor-based pagination for `work list` / `memory search`
 - Cross-referencing confidence signal for stalled `blocked` items
