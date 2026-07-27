@@ -64,7 +64,9 @@ bun run build
 ./dist/cairn memory save "Prefers concise commits" "Regular reviewable commits." --type preference --scope personal
 ./dist/cairn memory show <memory-id>
 ./dist/cairn memory list --type architecture --scope project
+./dist/cairn memory list --stale-after-days 30
 ./dist/cairn memory search "refresh tokens"
+./dist/cairn memory search "refresh tokens" --stale-after-days 30
 ./dist/cairn memory relate <memory-id> <related-memory-id>
 ./dist/cairn memory relations <memory-id>
 ./dist/cairn memory unrelate <memory-id> <related-memory-id>
@@ -103,6 +105,8 @@ freshness without a separate `context status` call; `work`/`memory` rows in
 Note: `cairn init` is optional — the first `work`, `memory`, or `context` command run in a project directory (one containing a `.git` root) initializes it automatically. Use `init` explicitly only if you want to set it up ahead of time or customize the project name.
 
 Memory scope: a memory is either `project` (tied to the current repo) or `personal` (user-level, visible from every project). When `--scope` is omitted, the default is derived from the type — `preference` defaults to `personal`, every other type defaults to `project` — and an explicit `--scope` always wins. Use `personal` for facts that follow you across repositories (tool and editor choices, style and workflow preferences); use `project` for facts about a specific codebase.
+
+Memory staleness: every memory read (`show`, `list`, `search`, `sessions`, `context`) reports a derived `ageDays` (whole days since `updatedAt`) and a `stale` boolean, computed at read time and never stored. A memory is stale once its age exceeds 90 days by default; `pinned` memories are never stale regardless of age, since a pin is an explicit "keep fresh" signal. Override the threshold per query with `--stale-after-days <n>` on `memory list` and `memory search` (and `memory sessions`).
 
 ## Accepted direction
 

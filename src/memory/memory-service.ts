@@ -14,10 +14,16 @@ import {
   type MemoryScope,
   type MemoryType,
 } from "./memory.ts";
+import {
+  computeMemoryAgeDays,
+  DEFAULT_STALE_AFTER_DAYS,
+  isMemoryStale,
+} from "./memory-staleness.ts";
 import type { MemoryFilter, MemoryRepository } from "./memory-repository.ts";
 import { SqliteMemoryRepository } from "./sqlite-memory-repository.ts";
 
 export type MemoryView = Readonly<{
+  ageDays: number;
   archived: boolean;
   content: string;
   createdAt: string;
@@ -27,6 +33,7 @@ export type MemoryView = Readonly<{
   revision: number;
   scope: MemoryScope;
   shortId: string;
+  stale: boolean;
   title: string;
   topic: string | null;
   type: MemoryType;
@@ -38,7 +45,22 @@ type MemoryContextOptions = Readonly<{
   path: string;
 }>;
 
+/**
+ * Staleness is a derived, read-time-only signal (no stored column, no
+ * migration): every read path resolves an "as of" clock and a threshold so
+ * `ageDays`/`stale` can be attached to each `MemoryView` without persisting
+ * either value. `now` defaults to the real clock and only exists as an
+ * override for deterministic tests; `staleAfterDays` defaults to
+ * `DEFAULT_STALE_AFTER_DAYS` (90) and can be overridden per query via the
+ * CLI's `--stale-after-days` option.
+ */
+type StalenessOptions = Readonly<{
+  now?: (() => string) | undefined;
+  staleAfterDays?: number | undefined;
+}>;
+
 type SaveMemoryOptions = MemoryContextOptions &
+  Readonly<{ staleAfterDays?: number | undefined }> &
   Readonly<{
     content: string;
     idFactory?: (() => string) | undefined;
@@ -49,12 +71,15 @@ type SaveMemoryOptions = MemoryContextOptions &
     type: MemoryType;
   }>;
 
-type ShowMemoryOptions = MemoryContextOptions & Readonly<{ id: string }>;
+type ShowMemoryOptions = MemoryContextOptions &
+  StalenessOptions &
+  Readonly<{ id: string }>;
 
 type RelateMemoryOptions = MemoryContextOptions &
   Readonly<{ id: string; now?: (() => string) | undefined; relatedId: string }>;
 
 type TimelineMemoryOptions = MemoryContextOptions &
+  StalenessOptions &
   Readonly<{ after?: number | undefined; before?: number | undefined; id: string }>;
 
 export type MemoryTimelineView = Readonly<{
@@ -64,6 +89,7 @@ export type MemoryTimelineView = Readonly<{
 }>;
 
 type ListMemoryOptions = MemoryContextOptions &
+  StalenessOptions &
   Readonly<{
     includeArchived?: boolean | undefined;
     limit?: number | undefined;
@@ -75,12 +101,16 @@ type ListMemoryOptions = MemoryContextOptions &
 type SearchMemoryOptions = ListMemoryOptions & Readonly<{ query: string }>;
 
 type LifecycleMemoryOptions = MemoryContextOptions &
+  StalenessOptions &
   Readonly<{ id: string; now?: (() => string) | undefined }>;
 
+
 type SessionSummariesOptions = MemoryContextOptions &
+  StalenessOptions &
   Readonly<{ limit?: number | undefined; scope?: MemoryScope | undefined }>;
 
 type ContextPrimerOptions = MemoryContextOptions &
+  StalenessOptions &
   Readonly<{ recentLimit?: number | undefined }>;
 
 export type ContextPrimerView = Readonly<{
@@ -120,9 +150,24 @@ function resolveMemoryProject(options: MemoryContextOptions) {
   });
 }
 
-function toMemoryView(memory: Memory): MemoryView {
-  const id = memory.id.toString();
+function resolveStalenessClock(options: StalenessOptions): Readonly<{
+  now: string;
+  staleAfterDays: number;
+}> {
   return {
+    now: (options.now ?? (() => new Date().toISOString()))(),
+    staleAfterDays: options.staleAfterDays ?? DEFAULT_STALE_AFTER_DAYS,
+  };
+}
+
+function toMemoryView(
+  memory: Memory,
+  clock: Readonly<{ now: string; staleAfterDays: number }>,
+): MemoryView {
+  const id = memory.id.toString();
+  const ageDays = computeMemoryAgeDays(memory.updatedAt, clock.now);
+  return {
+    ageDays,
     archived: memory.archived,
     content: memory.content,
     createdAt: memory.createdAt,
@@ -132,12 +177,18 @@ function toMemoryView(memory: Memory): MemoryView {
     revision: memory.revision,
     scope: memory.scope,
     shortId: id.replaceAll("-", "").slice(0, 8),
+    stale: isMemoryStale({
+      ageDays,
+      pinned: memory.pinned,
+      staleAfterDays: clock.staleAfterDays,
+    }),
     title: memory.title.toString(),
     topic: memory.topic,
     type: memory.type,
     updatedAt: memory.updatedAt,
   };
 }
+
 
 async function withMemoryRepository<Result>(
   options: MemoryContextOptions,
@@ -175,6 +226,7 @@ export async function saveMemory(
 ): Promise<MemoryView> {
   return withMemoryRepository(options, async (repository, projectId) => {
     const now = (options.now ?? (() => new Date().toISOString()))();
+    const clock = resolveStalenessClock({ ...options, now: () => now });
     const idFactory = options.idFactory ?? randomUUID;
     const scope = options.scope ?? defaultScopeForType(options.type);
     const scopedProjectId = scope === "project" ? projectId : null;
@@ -192,7 +244,7 @@ export async function saveMemory(
           now,
         );
         await repository.applyUpsert(transition);
-        return toMemoryView(transition.memory);
+        return toMemoryView(transition.memory, clock);
       }
     }
 
@@ -207,7 +259,7 @@ export async function saveMemory(
       type: options.type,
     });
     await repository.create(memory);
-    return toMemoryView(memory);
+    return toMemoryView(memory, clock);
   });
 }
 
@@ -234,8 +286,9 @@ export async function showMemory(
   options: ShowMemoryOptions,
 ): Promise<MemoryView> {
   return withMemoryRepository(options, async (repository, projectId) => {
+    const clock = resolveStalenessClock(options);
     const memory = await requireMemory(repository, projectId, options.id);
-    return toMemoryView(memory);
+    return toMemoryView(memory, clock);
   });
 }
 
@@ -243,11 +296,12 @@ export async function listMemories(
   options: ListMemoryOptions,
 ): Promise<readonly MemoryView[]> {
   return withMemoryRepository(options, async (repository, projectId) => {
+    const clock = resolveStalenessClock(options);
     const memories = await repository.listByProject(
       projectId,
       toFilter(options),
     );
-    return memories.map(toMemoryView);
+    return memories.map((memory) => toMemoryView(memory, clock));
   });
 }
 
@@ -255,12 +309,13 @@ export async function searchMemories(
   options: SearchMemoryOptions,
 ): Promise<readonly MemoryView[]> {
   return withMemoryRepository(options, async (repository, projectId) => {
+    const clock = resolveStalenessClock(options);
     const memories = await repository.search(
       projectId,
       options.query,
       toFilter(options),
     );
-    return memories.map(toMemoryView);
+    return memories.map((memory) => toMemoryView(memory, clock));
   });
 }
 
@@ -289,9 +344,10 @@ export async function listMemoryRelations(
   options: ShowMemoryOptions,
 ): Promise<readonly MemoryView[]> {
   return withMemoryRepository(options, async (repository, projectId) => {
+    const clock = resolveStalenessClock(options);
     const memory = await requireMemory(repository, projectId, options.id);
     const related = await repository.listRelations(memory.id);
-    return related.map(toMemoryView);
+    return related.map((relatedMemory) => toMemoryView(relatedMemory, clock));
   });
 }
 
@@ -299,6 +355,7 @@ export async function getMemoryTimeline(
   options: TimelineMemoryOptions,
 ): Promise<MemoryTimelineView> {
   return withMemoryRepository(options, async (repository, projectId) => {
+    const clock = resolveStalenessClock(options);
     const memory = await requireMemory(repository, projectId, options.id);
     const timeline = await repository.listTimeline(
       memory,
@@ -306,9 +363,9 @@ export async function getMemoryTimeline(
       options.after ?? 5,
     );
     return {
-      after: timeline.after.map(toMemoryView),
-      before: timeline.before.map(toMemoryView),
-      target: toMemoryView(timeline.target),
+      after: timeline.after.map((entry) => toMemoryView(entry, clock)),
+      before: timeline.before.map((entry) => toMemoryView(entry, clock)),
+      target: toMemoryView(timeline.target, clock),
     };
   });
 }
@@ -318,10 +375,11 @@ export async function pinMemory(
 ): Promise<MemoryView> {
   return withMemoryRepository(options, async (repository, projectId) => {
     const now = (options.now ?? (() => new Date().toISOString()))();
+    const clock = resolveStalenessClock({ ...options, now: () => now });
     const memory = await requireMemory(repository, projectId, options.id);
     const transition = setMemoryPinned(memory, true, now);
     await repository.applyLifecycleTransition(transition);
-    return toMemoryView(transition.memory);
+    return toMemoryView(transition.memory, clock);
   });
 }
 
@@ -330,10 +388,11 @@ export async function unpinMemory(
 ): Promise<MemoryView> {
   return withMemoryRepository(options, async (repository, projectId) => {
     const now = (options.now ?? (() => new Date().toISOString()))();
+    const clock = resolveStalenessClock({ ...options, now: () => now });
     const memory = await requireMemory(repository, projectId, options.id);
     const transition = setMemoryPinned(memory, false, now);
     await repository.applyLifecycleTransition(transition);
-    return toMemoryView(transition.memory);
+    return toMemoryView(transition.memory, clock);
   });
 }
 
@@ -342,10 +401,11 @@ export async function archiveMemory(
 ): Promise<MemoryView> {
   return withMemoryRepository(options, async (repository, projectId) => {
     const now = (options.now ?? (() => new Date().toISOString()))();
+    const clock = resolveStalenessClock({ ...options, now: () => now });
     const memory = await requireMemory(repository, projectId, options.id);
     const transition = setMemoryArchived(memory, true, now);
     await repository.applyLifecycleTransition(transition);
-    return toMemoryView(transition.memory);
+    return toMemoryView(transition.memory, clock);
   });
 }
 
@@ -354,10 +414,11 @@ export async function unarchiveMemory(
 ): Promise<MemoryView> {
   return withMemoryRepository(options, async (repository, projectId) => {
     const now = (options.now ?? (() => new Date().toISOString()))();
+    const clock = resolveStalenessClock({ ...options, now: () => now });
     const memory = await requireMemory(repository, projectId, options.id);
     const transition = setMemoryArchived(memory, false, now);
     await repository.applyLifecycleTransition(transition);
-    return toMemoryView(transition.memory);
+    return toMemoryView(transition.memory, clock);
   });
 }
 
@@ -365,12 +426,13 @@ export async function listSessionSummaries(
   options: SessionSummariesOptions,
 ): Promise<readonly MemoryView[]> {
   return withMemoryRepository(options, async (repository, projectId) => {
+    const clock = resolveStalenessClock(options);
     const memories = await repository.listByProject(projectId, {
       limit: options.limit,
       scope: options.scope,
       type: "session_summary",
     });
-    return memories.map(toMemoryView);
+    return memories.map((memory) => toMemoryView(memory, clock));
   });
 }
 
@@ -378,6 +440,7 @@ export async function getContextPrimer(
   options: ContextPrimerOptions,
 ): Promise<ContextPrimerView> {
   return withMemoryRepository(options, async (repository, projectId) => {
+    const clock = resolveStalenessClock(options);
     const recentLimit = options.recentLimit ?? 5;
     const pinned = await repository.listByProject(projectId, { limit: 50 });
     const pinnedMemories = pinned.filter((memory) => memory.pinned);
@@ -396,10 +459,13 @@ export async function getContextPrimer(
       .slice(0, recentLimit);
 
     return {
-      pinnedMemories: pinnedMemories.map(toMemoryView),
-      recentMemories: recentMemories.map(toMemoryView),
+      pinnedMemories: pinnedMemories.map((memory) => toMemoryView(memory, clock)),
+      recentMemories: recentMemories.map((memory) => toMemoryView(memory, clock)),
       recentSessionSummary:
-        recentSessionSummary === null ? null : toMemoryView(recentSessionSummary),
+        recentSessionSummary === null
+          ? null
+          : toMemoryView(recentSessionSummary, clock),
     };
   });
 }
+

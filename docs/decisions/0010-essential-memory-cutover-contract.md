@@ -76,3 +76,55 @@ without changing the storage model:
 - **Importers no longer force `project` scope.** The context importer previously
   hard-coded `scope: "project"`; it now omits scope so the type-derived default
   applies, which keeps re-import idempotency consistent with reclassified data.
+
+## Amendment — derived, read-time staleness signal (July 27, 2026)
+
+Memory had no first-class staleness signal the way work (revisions/audit
+history) and context (content-hash plus `not_indexed`/`refresh_required`
+status) do. `createdAt`/`updatedAt` were plain fields, not a ranking or
+display signal, so agents had no way to see at a glance whether a saved
+memory might no longer reflect reality. This amendment adds an
+informational, non-storage staleness signal without changing the storage
+model or migration history:
+
+- **Derived, read-time-only signal.** Staleness is computed on every read; it
+  is never persisted, requires no new migration, and adds no stored column.
+  Two fields are attached to every `MemoryView` returned by the memory
+  domain: `ageDays` (an integer count of whole UTC days) and `stale` (a
+  boolean). Both are recomputed from `updatedAt` and the current clock on
+  every call and are never cached or written back.
+- **`updatedAt` is the reference point, not `createdAt`.** Age is measured
+  from `updatedAt` rather than `createdAt` because a topic-key upsert (this
+  ADR's original topic-upsert rule) bumps `updatedAt` in place while
+  preserving the memory's id and creation time. Measuring from `updatedAt`
+  means "how long since this was last confirmed true," which is the more
+  useful staleness signal for a memory that evolves over time via upserts.
+- **90 day default threshold.** A memory is stale once `ageDays` exceeds 90
+  by default (`DEFAULT_STALE_AFTER_DAYS` in `src/memory/memory-staleness.ts`).
+  This default is deliberately conservative and purely informational in this
+  slice.
+- **Pinned memories are never stale.** Regardless of age, a `pinned` memory's
+  `stale` field is always `false`. A pin is already an explicit "keep fresh"
+  signal per this ADR's pin/archive amendment, so age-based staleness would
+  contradict an agent's or user's explicit judgment that a memory remains
+  current.
+- **`--stale-after-days <n>` CLI override.** `memory list`, `memory search`,
+  and `memory sessions` accept an optional `--stale-after-days <n>` to
+  override the default threshold for that query only; it must be a positive
+  integer or the command fails the same way an invalid `--limit` does today
+  (an `invalid_memory`-coded error). The default threshold and the override
+  apply only to the `stale` computation — they never filter, re-rank, or
+  otherwise change which memories are returned.
+- **Surfaced everywhere a memory is rendered.** `ageDays`/`stale` appear on
+  every `MemoryView`-shaped object in JSON and human-readable output:
+  `memory show`, `memory list`, `memory search`, `memory relations`,
+  `memory timeline` (target, before, and after entries), `memory
+  pin`/`unpin`/`archive`/`unarchive`, `memory sessions`, and `memory
+  context`'s embedded `pinnedMemories`, `recentMemories`, and
+  `recentSessionSummary`.
+- **No ranking or filtering change in this slice.** This amendment is
+  informational metadata only. It does not change `memory search`'s FTS5
+  ranking, does not reorder `memory list`/`memory context` results by age or
+  staleness, and does not add a `--stale-only`/`--exclude-stale` filter. A
+  future work unit may build decay-aware ranking or filtering on top of this
+  signal, but that is explicitly out of scope here.
