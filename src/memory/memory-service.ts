@@ -5,7 +5,11 @@ import { openCairnDatabase } from "../storage/database.ts";
 import { CairnQueryDatabase } from "../storage/query-database.ts";
 import {
   createMemory,
+  decodeMemoryListCursor,
+  decodeMemorySearchCursor,
   defaultScopeForType,
+  encodeMemoryListCursor,
+  encodeMemorySearchCursor,
   setMemoryArchived,
   setMemoryPinned,
   upsertMemory,
@@ -117,9 +121,15 @@ export type MemoryTimelineView = Readonly<{
   target: MemoryView;
 }>;
 
+export type MemoryListPage = Readonly<{
+  items: readonly MemoryView[];
+  nextCursor: string | null;
+}>;
+
 type ListMemoryOptions = MemoryContextOptions &
   StalenessOptions &
   Readonly<{
+    cursor?: string | undefined;
     includeArchived?: boolean | undefined;
     limit?: number | undefined;
     scope?: MemoryScope | undefined;
@@ -414,28 +424,59 @@ export async function showMemory(
 
 export async function listMemories(
   options: ListMemoryOptions,
-): Promise<readonly MemoryView[]> {
+): Promise<MemoryListPage> {
   return withMemoryRepository(options, async (repository, projectId) => {
     const clock = resolveStalenessClock(options);
-    const memories = await repository.listByProject(
-      projectId,
-      toFilter(options),
-    );
-    return memories.map((memory) => toMemoryView(memory, clock));
+    const limit = options.limit;
+    const cursor = options.cursor === undefined
+      ? undefined
+      : decodeMemoryListCursor(options.cursor);
+    // Fetch one extra row past the requested page size so we can tell
+    // whether another page exists, and derive nextCursor from the last row
+    // actually returned on this page (never the extra lookahead row).
+    const rows = await repository.listByProject(projectId, {
+      ...toFilter(options),
+      cursor,
+      limit: limit === undefined ? undefined : limit + 1,
+    });
+    const hasMore = limit !== undefined && rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page.at(-1);
+    const nextCursor = hasMore && last !== undefined
+      ? encodeMemoryListCursor({ createdAt: last.createdAt, id: last.id.toString() })
+      : null;
+    return { items: page.map((memory) => toMemoryView(memory, clock)), nextCursor };
   });
 }
 
 export async function searchMemories(
   options: SearchMemoryOptions,
-): Promise<readonly MemoryView[]> {
+): Promise<MemoryListPage> {
   return withMemoryRepository(options, async (repository, projectId) => {
     const clock = resolveStalenessClock(options);
-    const memories = await repository.search(
-      projectId,
-      options.query,
-      toFilter(options),
-    );
-    return memories.map((memory) => toMemoryView(memory, clock));
+    const limit = options.limit;
+    const searchCursor = options.cursor === undefined
+      ? undefined
+      : decodeMemorySearchCursor(options.cursor);
+    const results = await repository.search(projectId, options.query, {
+      ...toFilter(options),
+      limit: limit === undefined ? undefined : limit + 1,
+      searchCursor,
+    });
+    const hasMore = limit !== undefined && results.length > limit;
+    const page = hasMore ? results.slice(0, limit) : results;
+    const last = page.at(-1);
+    const nextCursor = hasMore && last !== undefined
+      ? encodeMemorySearchCursor({
+          createdAt: last.memory.createdAt,
+          id: last.memory.id.toString(),
+          rank: last.rank,
+        })
+      : null;
+    return {
+      items: page.map(({ memory }) => toMemoryView(memory, clock)),
+      nextCursor,
+    };
   });
 }
 

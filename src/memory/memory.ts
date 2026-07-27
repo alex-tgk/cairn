@@ -1,3 +1,5 @@
+import { CursorDecodeError, decodeCursor, encodeCursor } from "../shared/cursor.ts";
+
 export const MEMORY_TYPES = [
   "decision",
   "architecture",
@@ -147,6 +149,86 @@ export function parseMemoryScope(value: string): MemoryScope {
   throw new MemoryValidationError(
     `Memory scope must be one of: ${MEMORY_SCOPES.join(", ")}`,
   );
+}
+
+function decodeMemoryCursorPayload(token: string): Readonly<Record<string, unknown>> {
+  try {
+    return decodeCursor(token);
+  } catch (error) {
+    throw new MemoryValidationError(
+      error instanceof CursorDecodeError ? error.message : "Invalid cursor",
+    );
+  }
+}
+
+function requireCursorString(
+  payload: Readonly<Record<string, unknown>>,
+  field: string,
+): string {
+  const value = payload[field];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new MemoryValidationError(`Cursor ${field} must be a non-empty string`);
+  }
+  return value;
+}
+
+/**
+ * Opaque keyset-pagination cursor for `memory list`, matching
+ * `listByProject`'s `ORDER BY created_at DESC, id DESC` and the trailing
+ * `(created_at, id)` columns of the `memories_scope_project_archived_order_index`
+ * (migration 7). Encoding the last row's sort-key tuple lets the next page
+ * seek directly instead of re-scanning already-returned rows.
+ */
+export type MemoryListCursor = Readonly<{ createdAt: string; id: string }>;
+
+export function encodeMemoryListCursor(cursor: MemoryListCursor): string {
+  return encodeCursor(cursor);
+}
+
+export function decodeMemoryListCursor(token: string): MemoryListCursor {
+  const payload = decodeMemoryCursorPayload(token);
+  return {
+    createdAt: requireCursorString(payload, "createdAt"),
+    id: requireCursorString(payload, "id"),
+  };
+}
+
+/**
+ * Opaque keyset-pagination cursor for `memory search`. `search` orders by
+ * FTS5's `bm25`-derived `rank` column first (`ORDER BY
+ * search_entries_fts.rank, memories.created_at DESC, memories.id DESC`), so
+ * the cursor must also carry the last row's `rank` value alongside the
+ * `(created_at, id)` tie-breakers used by `memory list`.
+ *
+ * Caveat (documented rather than faked away): `rank` is a computed FTS5
+ * value, not an indexed column, so seeking on it is deterministic — the
+ * same query against the same data always reproduces the same `rank` for
+ * the same row — but it is not an indexed keyset seek the way `memory
+ * list`'s cursor is. Cairn still has to evaluate `rank` for every matching
+ * row on each page rather than jumping straight to an index position. See
+ * ADR 0011 for the full tradeoff.
+ */
+export type MemorySearchCursor = Readonly<{
+  createdAt: string;
+  id: string;
+  rank: number;
+}>;
+
+export function encodeMemorySearchCursor(cursor: MemorySearchCursor): string {
+  return encodeCursor(cursor);
+}
+
+export function decodeMemorySearchCursor(token: string): MemorySearchCursor {
+  const payload = decodeMemoryCursorPayload(token);
+  const rank = payload.rank;
+  if (typeof rank !== "number" || !Number.isFinite(rank)) {
+    throw new MemoryValidationError("Cursor rank must be a finite number");
+  }
+  return {
+    createdAt: requireCursorString(payload, "createdAt"),
+    id: requireCursorString(payload, "id"),
+    rank,
+  };
 }
 
 export type Memory = Readonly<{

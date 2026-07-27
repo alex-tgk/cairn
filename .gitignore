@@ -7,3 +7,4 @@ coverage/
 *.db-wal
 dist-release/
 .DS_Store
+.prototype/

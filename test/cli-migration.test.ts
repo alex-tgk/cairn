@@ -186,9 +186,9 @@ describe("Cairn CLI import", () => {
     expect(rerunParsed.importedCount).toBe(1);
 
     const list = runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory);
-    const memories = JSON.parse(list.stdout) as { title: string }[];
-    expect(memories).toHaveLength(1);
-    expect(memories[0]?.title).toBe("Observation one");
+    const memories = JSON.parse(list.stdout) as { items: { title: string }[] };
+    expect(memories.items).toHaveLength(1);
+    expect(memories.items[0]?.title).toBe("Observation one");
   });
 
   test("imports context rows from a source SQLite index", () => {
@@ -227,8 +227,8 @@ describe("Cairn CLI import", () => {
     expect(parsed.importedCount).toBe(1);
 
     const list = runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory);
-    const memories = JSON.parse(list.stdout) as { title: string }[];
-    expect(memories[0]?.title).toBe("Doc one");
+    const memories = JSON.parse(list.stdout) as { items: { title: string }[] };
+    expect(memories.items[0]?.title).toBe("Doc one");
   });
 
   test("imports a preference-kind context row as personal and re-imports idempotently", () => {
@@ -266,19 +266,19 @@ describe("Cairn CLI import", () => {
         ["memory", "list", "--scope", "personal", "--path", workspace, "--json"],
         dataDirectory,
       ).stdout,
-    ) as { projectId: string | null; scope: string; title: string }[];
-    expect(personal).toHaveLength(1);
-    expect(personal[0]?.title).toBe("Prefers tmux");
-    expect(personal[0]?.scope).toBe("personal");
-    expect(personal[0]?.projectId).toBeNull();
+    ) as { items: { projectId: string | null; scope: string; title: string }[] };
+    expect(personal.items).toHaveLength(1);
+    expect(personal.items[0]?.title).toBe("Prefers tmux");
+    expect(personal.items[0]?.scope).toBe("personal");
+    expect(personal.items[0]?.projectId).toBeNull();
 
     const rerun = runCli(importArguments, dataDirectory);
     expect((JSON.parse(rerun.stdout) as { importedCount: number }).importedCount).toBe(1);
 
     const all = JSON.parse(
       runCli(["memory", "list", "--path", workspace, "--json"], dataDirectory).stdout,
-    ) as { title: string }[];
-    expect(all.filter((memory) => memory.title === "Prefers tmux")).toHaveLength(1);
+    ) as { items: { title: string }[] };
+    expect(all.items.filter((memory) => memory.title === "Prefers tmux")).toHaveLength(1);
   });
 });
 

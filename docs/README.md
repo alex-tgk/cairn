@@ -26,6 +26,7 @@ Start with the product boundary, then follow the architecture and roadmap into i
 | [0008](decisions/0008-essential-work-tracking-cutover-contract.md) | Accepted | Complete the essential work-tracking cutover with revisions, atomic claims, explainable readiness, and essential collaboration. |
 | [0009](decisions/0009-essential-context-search-cutover-contract.md) | Accepted | Replace prior local-context tooling with safe project-scoped incremental indexing, deterministic search, and a local-only primer. |
 | [0010](decisions/0010-essential-memory-cutover-contract.md) | Accepted | Complete the essential memory cutover with scoped, topic-addressable memories, topic-key upsert, and audited revisions. |
+| [0011](decisions/0011-cursor-based-pagination.md) | Accepted | Add opaque, keyset (seek-based) cursor pagination to `work list`, `memory list`, and `memory search`, reusing existing indexes with no new migration. |
 
 ## Status language
 

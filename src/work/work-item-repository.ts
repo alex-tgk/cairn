@@ -1,5 +1,6 @@
 import type {
   WorkItem,
+  WorkItemCursor,
   WorkItemEvent,
   WorkItemId,
   WorkItemStatus,
@@ -114,6 +115,7 @@ export type WorkItemComment = Readonly<{
 
 export type WorkItemFilter = Readonly<{
   assignee?: string | null | undefined;
+  cursor?: WorkItemCursor | undefined;
   labels?: readonly string[] | undefined;
   limit?: number | undefined;
   parentId?: WorkItemId | null | undefined;

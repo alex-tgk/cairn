@@ -9,7 +9,9 @@ import {
   closeWorkItem,
   computeBlockedStaleness,
   createWorkItem,
+  decodeWorkItemCursor,
   DEFAULT_STALLED_AFTER_DAYS,
+  encodeWorkItemCursor,
   reopenWorkItem,
   updateWorkItem,
   WorkItemConflictError,
@@ -79,6 +81,11 @@ export type WorkCommentView = Readonly<{
   revision: number;
 }>;
 
+export type WorkListPage = Readonly<{
+  items: readonly WorkItemView[];
+  nextCursor: string | null;
+}>;
+
 type WorkContextOptions = Readonly<{
   dataDirectory?: string;
   path: string;
@@ -86,6 +93,7 @@ type WorkContextOptions = Readonly<{
 
 type WorkListFilterOptions = Readonly<{
   assignee?: string | undefined;
+  cursor?: string | undefined;
   labels?: readonly string[] | undefined;
   limit?: number | undefined;
   parent?: string | undefined;
@@ -250,6 +258,9 @@ async function resolveWorkFilter(
   }
   return {
     assignee: options.unassigned ? null : options.assignee,
+    cursor: options.cursor === undefined
+      ? undefined
+      : decodeWorkItemCursor(options.cursor),
     labels: options.labels,
     limit: options.limit,
     parentId,
@@ -598,12 +609,29 @@ export async function showWork(
 
 export async function listWork(
   options: WorkContextOptions & WorkListFilterOptions,
-): Promise<readonly WorkItemView[]> {
+): Promise<WorkListPage> {
   return withWorkRepository(options, async (repository, projectId) => {
     const filter = await resolveWorkFilter(repository, projectId, options);
-    return (await repository.listByProject(projectId, filter)).map(
-      toWorkItemView,
-    );
+    const limit = filter.limit;
+    // Fetch one extra row past the requested page size so we can tell
+    // whether another page exists without a separate COUNT query, and
+    // derive nextCursor from the sort-key tuple of the last row actually
+    // returned on this page (never the extra lookahead row).
+    const rows = await repository.listByProject(projectId, {
+      ...filter,
+      limit: limit === undefined ? undefined : limit + 1,
+    });
+    const hasMore = limit !== undefined && rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page.at(-1);
+    const nextCursor = hasMore && last !== undefined
+      ? encodeWorkItemCursor({
+          createdAt: last.createdAt,
+          id: last.id.toString(),
+          priority: last.priority.toNumber(),
+        })
+      : null;
+    return { items: page.map(toWorkItemView), nextCursor };
   });
 }
 

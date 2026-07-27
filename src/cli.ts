@@ -83,6 +83,7 @@ import {
   LinkedWorkItemNotFoundError,
   MemoryAmbiguousReferenceError,
   MemoryNotFoundError,
+  type MemoryView,
 } from "./memory/memory-service.ts";
 import {
   ContextScopeValidationError,
@@ -133,7 +134,7 @@ Usage:
   cairn work list [--status <status>] [--priority <0-4>] [--type <type>]
                   [--assignee <name> | --unassigned]
                   [--label <label> ...] [--parent <id> | --root]
-                  [--limit <n>] [--path <path>] [--json]
+                  [--limit <n>] [--cursor <token>] [--path <path>] [--json]
   cairn work claim <id> --assignee <name> [--if-revision <n>] [--path <path>] [--json]
   cairn work close <id> [--if-revision <n>] [--path <path>] [--json]
   cairn work reopen <id> [--if-revision <n>] [--path <path>] [--json]
@@ -167,10 +168,12 @@ Usage:
                      [--topic <key>] [--path <path>] [--json]
   cairn memory show <id> [--path <path>] [--json]
   cairn memory list [--type <type>] [--scope <project|personal>]
-                     [--topic <key>] [--limit <n>] [--include-archived]
+                     [--topic <key>] [--limit <n>] [--cursor <token>]
+                     [--include-archived]
                      [--stale-after-days <n>] [--path <path>] [--json]
   cairn memory search <query> [--type <type>] [--scope <project|personal>]
-                       [--topic <key>] [--limit <n>] [--include-archived]
+                       [--topic <key>] [--limit <n>] [--cursor <token>]
+                       [--include-archived]
                        [--stale-after-days <n>] [--path <path>] [--json]
   cairn memory relate <id> <related-id> [--path <path>] [--json]
   cairn memory unrelate <id> <related-id> [--path <path>] [--json]
@@ -283,6 +286,7 @@ function workListFilter(arguments_: readonly string[]) {
   }
   return {
     assignee,
+    cursor: optionValue(arguments_, "--cursor"),
     labels: labels.length === 0 ? undefined : labels,
     limit,
     parent,
@@ -328,21 +332,24 @@ function printResult(value: object, json: boolean): void {
 }
 
 function printWorkList(
-  items: Awaited<ReturnType<typeof listWork>>,
+  page: Awaited<ReturnType<typeof listWork>>,
   json: boolean,
 ): void {
   if (json) {
-    console.log(JSON.stringify(items, null, 2));
+    console.log(JSON.stringify(page, null, 2));
     return;
   }
-  if (items.length === 0) {
+  if (page.items.length === 0) {
     console.log("No work items.");
     return;
   }
-  for (const item of items) {
+  for (const item of page.items) {
     console.log(
       `${item.shortId}: ${item.title} [${item.status}, p${item.priority}, ${item.type}]`,
     );
+  }
+  if (page.nextCursor !== null) {
+    console.log(`next: --cursor ${page.nextCursor}`);
   }
 }
 
@@ -783,6 +790,7 @@ function memoryListFilter(arguments_: readonly string[]) {
     }
   }
   return {
+    cursor: optionValue(arguments_, "--cursor"),
     includeArchived: hasFlag(arguments_, "--include-archived") || undefined,
     limit,
     scope: scopeValue === undefined ? undefined : parseMemoryScope(scopeValue),
@@ -824,8 +832,14 @@ function printMemoryDetail(
   );
 }
 
+function renderMemoryLine(memory: MemoryView): string {
+  const topic = memory.topic === null ? "" : ` #${memory.topic}`;
+  const markers = `${memory.pinned ? " 📌" : ""}${memory.archived ? " (archived)" : ""}${memory.stale ? " (stale)" : ""}`;
+  return `${memory.shortId}: ${memory.title} [${memory.type}, ${memory.scope}]${topic}${markers} (age: ${memory.ageDays}d)`;
+}
+
 function printMemoryList(
-  memories: Awaited<ReturnType<typeof listMemories>>,
+  memories: readonly MemoryView[],
   json: boolean,
 ): void {
   if (json) {
@@ -837,11 +851,27 @@ function printMemoryList(
     return;
   }
   for (const memory of memories) {
-    const topic = memory.topic === null ? "" : ` #${memory.topic}`;
-    const markers = `${memory.pinned ? " 📌" : ""}${memory.archived ? " (archived)" : ""}${memory.stale ? " (stale)" : ""}`;
-    console.log(
-      `${memory.shortId}: ${memory.title} [${memory.type}, ${memory.scope}]${topic}${markers} (age: ${memory.ageDays}d)`,
-    );
+    console.log(renderMemoryLine(memory));
+  }
+}
+
+function printMemoryPage(
+  page: Awaited<ReturnType<typeof listMemories>>,
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(page, null, 2));
+    return;
+  }
+  if (page.items.length === 0) {
+    console.log("No memories.");
+    return;
+  }
+  for (const memory of page.items) {
+    console.log(renderMemoryLine(memory));
+  }
+  if (page.nextCursor !== null) {
+    console.log(`next: --cursor ${page.nextCursor}`);
   }
 }
 
@@ -1186,7 +1216,7 @@ async function runMemoryCommand(
   }
 
   if (action === "list") {
-    printMemoryList(
+    printMemoryPage(
       await listMemories({ path, ...memoryListFilter(arguments_) }),
       json,
     );
@@ -1194,7 +1224,7 @@ async function runMemoryCommand(
   }
 
   if (action === "search") {
-    printMemoryList(
+    printMemoryPage(
       await searchMemories({
         path,
         query: primary ?? "",
