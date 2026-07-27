@@ -442,6 +442,8 @@ describe("SQLite context index repository", () => {
 
     expect(matches).toHaveLength(1);
     expect(matches[0]).toMatchObject({
+      contentHash: "hash-auth",
+      indexedAt: "2026-07-13T14:00:00.000Z",
       matchedTerms: ["auth", "flow"],
       projectId: PROJECT_ID,
       relativePath: "auth.md",
@@ -474,6 +476,63 @@ describe("SQLite context index repository", () => {
       terms: ["auth", "deployment"],
     });
     expect(limited).toHaveLength(1);
+
+    await database.close();
+  });
+
+  test("keeps a stable indexedAt for unchanged content across repeated indexing", async () => {
+    const { database, repository } = createHarness(
+      ["source-1", "run-1", "document-a", "run-2"],
+      [
+        "2026-07-13T13:00:00.000Z",
+        "2026-07-13T14:00:00.000Z",
+        "2026-07-13T14:01:00.000Z",
+        "2026-07-13T15:00:00.000Z",
+        "2026-07-13T15:01:00.000Z",
+      ],
+    );
+    const source = await repository.upsertSource({
+      loadedConfig: loadedConfig(),
+      projectId: PROJECT_ID,
+      source: SOURCE,
+    });
+    const file = discoveredFile(
+      "auth.md",
+      "The auth flow uses refresh tokens rotated on every login.",
+      "hash-auth",
+    );
+    await repository.applyIndex({
+      files: [file],
+      mode: "rebuild",
+      projectId: PROJECT_ID,
+      skippedCount: 0,
+      sourceId: source.id,
+      workspaceId: WORKSPACE_ID,
+    });
+
+    // Re-index the exact same content on a later run; since the hash is
+    // unchanged this must not create a new version or bump indexedAt.
+    await repository.applyIndex({
+      files: [file],
+      mode: "refresh",
+      projectId: PROJECT_ID,
+      skippedCount: 0,
+      sourceId: source.id,
+      workspaceId: WORKSPACE_ID,
+    });
+
+    const matches = await repository.searchDocuments({
+      ftsQuery: '"auth"',
+      limit: 20,
+      scopes: [{ projectId: PROJECT_ID, workspaceId: WORKSPACE_ID }],
+      terms: ["auth"],
+    });
+
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({
+      contentHash: "hash-auth",
+      indexedAt: "2026-07-13T14:00:00.000Z",
+    });
 
     await database.close();
   });

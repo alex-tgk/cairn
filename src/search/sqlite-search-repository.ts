@@ -10,8 +10,10 @@ import type {
 
 type UnifiedSearchRow = Readonly<{
   body: string;
+  content_hash: string | null;
   entity_id: string;
   entity_kind: SearchEntityKind;
+  indexed_at: string | null;
   project_id: string;
   source_path: string | null;
   tags: string;
@@ -67,8 +69,10 @@ function mapSearchMatch(
   );
 
   return {
+    contentHash: row.content_hash ?? undefined,
     entityId: row.entity_id,
     entityKind: row.entity_kind,
+    indexedAt: row.indexed_at ?? undefined,
     matchedTerms,
     projectId: row.project_id,
     snippet: buildFixedMarkerSnippet(row.body, terms),
@@ -115,9 +119,17 @@ export class SqliteSearchRepository implements UnifiedSearchRepository {
         search_entries.title AS title,
         search_entries.tags AS tags,
         search_entries.body AS body,
-        search_entries.source_path AS source_path
+        search_entries.source_path AS source_path,
+        context_documents.content_hash AS content_hash,
+        context_document_versions.indexed_at AS indexed_at
       FROM search_entries_fts
       JOIN search_entries ON search_entries.id = search_entries_fts.rowid
+      LEFT JOIN context_documents
+        ON search_entries.entity_kind = 'context_document'
+        AND context_documents.id = search_entries.entity_id
+      LEFT JOIN context_document_versions
+        ON context_document_versions.document_id = context_documents.id
+        AND context_document_versions.content_hash = context_documents.content_hash
       WHERE search_entries_fts MATCH ${input.ftsQuery}
         AND (${kindCondition})
         AND (${scopeCondition})

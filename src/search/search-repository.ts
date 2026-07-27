@@ -20,8 +20,10 @@ export type UnifiedSearchInput = Readonly<{
 }>;
 
 export type UnifiedSearchMatch = Readonly<{
+  contentHash: string | undefined;
   entityId: string;
   entityKind: SearchEntityKind;
+  indexedAt: string | undefined;
   matchedTerms: readonly string[];
   projectId: string;
   snippet: string;

@@ -103,6 +103,15 @@ This is the cross-agent handoff. Update it whenever implementation status, verif
   recommended `cairn context refresh` command), and question-specific
   search results in a stable order; rejects `--all` since prime is
   single-project only
+- Per-result staleness fields (ADR 0009 amendment): every context-kind
+  result row from `cairn context search` and `cairn search` now includes
+  `contentHash` and `indexedAt`, projected read-only from the existing
+  migration-4 `context_documents.content_hash` and the matching
+  `context_document_versions.indexed_at` (the currently-active version, not
+  "now"). Text output renders an `as of: <indexedAt> (<contentHash>)` line;
+  `work_item`/`memory` rows in the unified `cairn search` leave both fields
+  `undefined` since they have no file-hash freshness model. No new migration
+  or schema was needed.
 - Slice 4's search/prime CLI surface follows ADR 0009's exit code mapping
   (0 success including empty results, 2 invalid query/limit/scope)
 - New `search` domain (`src/search/`): a read-only projection over the

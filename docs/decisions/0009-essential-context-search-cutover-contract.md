@@ -72,3 +72,34 @@ The essential cutover does not include exact CLI or output compatibility with th
 - Incremental hashes and immutable versions make refresh explainable and cheap for unchanged content, at the cost of additional schema and lifecycle rules.
 - Raw FTS5 queries, triggers, and projection repair remain parameterized SQLite-specific infrastructure under ADR 0007.
 - The prior context-search tooling, the prior memory tool, and LightRAG remain separate during migration; the new context commands do not silently invoke them.
+
+## Amendment — per-result staleness fields (July 27, 2026)
+
+The original decision made `context status` honest about freshness (it
+distinguishes `not_indexed`, `indexed`, and `refresh_required`, and does not
+claim arbitrary filesystem content is fresh without a refresh), but that
+honesty stopped at status. A `context search` or unified `search` hit gave an
+agent no way to tell how stale that specific result was without a second,
+separate `context status` call. This amendment closes that gap by exposing,
+per result, the same freshness data status already relies on — no new
+migration or schema was required.
+
+- **New per-result fields.** Every context-kind result row returned by
+  `cairn context search` and `cairn search` now includes `contentHash` (the
+  document's current SHA-256, already computed and stored on
+  `context_documents.content_hash`) and `indexedAt` (the ISO-8601
+  `context_document_versions.indexed_at` of that document's currently-active
+  version — the version whose content hash matches the document's current
+  hash, not "now"). Both are read-only projections of migration 4 storage
+  already described above; no columns were added.
+- **Human-readable rendering.** Text-mode output renders an `as of: <indexedAt>
+  (<contentHash>)` line alongside each context result's existing
+  tags/matched/snippet lines, matching the existing convention of one labeled
+  line per field.
+- **Scoped to the context domain.** `work_item` and `memory` rows returned by
+  the unified `cairn search` do not have a file-hash freshness model, so their
+  `contentHash`/`indexedAt` fields are `undefined` in JSON and omitted from
+  text rendering rather than forcing an unrelated concept onto those kinds.
+- **Additive and non-breaking.** These fields do not change ranking, matching,
+  scope filtering, or the exit-code contract, and existing consumers that
+  ignore unknown JSON fields are unaffected.
