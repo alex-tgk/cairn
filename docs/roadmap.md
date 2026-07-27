@@ -139,6 +139,23 @@ Implement read-only inventories of prior external tools, idempotent dry-run impo
 
 Validate release artifacts on supported platforms, add signing and checksums, create a versioned GitHub release, then publish the first formula and bottle through the custom Homebrew tap.
 
+## Backlog: candidate ideas (not committed)
+
+Ideas that have not been promoted into a slice above are tracked as Cairn
+work items under the `Triage talk-prep context-efficiency feature ideas`
+epic (`cairn work show 31d034d6 --json`), sourced from
+[talk-notes-context-efficiency.md](talk-notes-context-efficiency.md):
+
+- Memory staleness/decay signal (needs an ADR amendment to ADR 0010 before
+  implementation)
+- Backlink memories to the work items/context they explain
+- Expose per-result index staleness in `context search`
+- Cursor-based pagination for `work list` / `memory search`
+- Cross-referencing confidence signal for stalled `blocked` items
+
+Promote an item into a slice above (and file/amend an ADR if it changes a
+domain contract) before starting implementation.
+
 ## Review rule
 
 Each slice must include its domain behavior, database migration, CLI/JSON contract, tests, user documentation, and rollback or migration implications in the same work unit.
