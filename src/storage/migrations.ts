@@ -443,4 +443,30 @@ export const MIGRATIONS: readonly Migration[] = [
       WHERE entity_kind = 'memory' AND tags LIKE 'preference project%';
     `,
   },
+  {
+    name: "add memory backlinks to work items and context documents",
+    version: 9,
+    sql: `
+      CREATE TABLE memory_work_links (
+        memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+        work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(memory_id, work_item_id)
+      ) STRICT;
+
+      CREATE INDEX memory_work_links_work_item_index
+        ON memory_work_links(work_item_id, memory_id);
+
+      CREATE TABLE memory_context_links (
+        memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+        context_document_id TEXT NOT NULL
+          REFERENCES context_documents(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(memory_id, context_document_id)
+      ) STRICT;
+
+      CREATE INDEX memory_context_links_document_index
+        ON memory_context_links(context_document_id, memory_id);
+    `,
+  },
 ];

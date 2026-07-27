@@ -52,6 +52,50 @@ afterEach(() => {
   }
 });
 
+function insertWorkItem(
+  database: ReturnType<typeof openCairnDatabase>,
+  id: string,
+  projectId: string,
+  title: string,
+): void {
+  database
+    .query<void, [string, string, string, string, string]>(
+      `INSERT INTO work_items(id, project_id, title, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+    .run(id, projectId, title, "2026-07-13T12:00:00.000Z", "2026-07-13T12:00:00.000Z");
+}
+
+function insertContextDocument(
+  database: ReturnType<typeof openCairnDatabase>,
+  id: string,
+  projectId: string,
+  workspaceId: string,
+  relativePath: string,
+  title: string,
+): void {
+  const sourceId = `${id}-source`;
+  database
+    .query<void, [string, string, string]>(
+      `INSERT INTO context_sources(
+         id, project_id, name, kind, root_relative_path, include_json,
+         exclude_json, max_file_bytes, config_hash, created_at, updated_at
+       ) VALUES (?, ?, ?, 'docs', '.', '[]', '[]', 1000000, 'hash',
+                 '2026-07-13T12:00:00.000Z', '2026-07-13T12:00:00.000Z')`,
+    )
+    .run(sourceId, projectId, sourceId);
+  database
+    .query<void, [string, string, string, string, string, string]>(
+      `INSERT INTO context_documents(
+         id, source_id, project_id, workspace_id, relative_path, kind, title,
+         content_hash, byte_size, first_indexed_at, last_seen_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, 'markdown', ?, 'contenthash', 10,
+                 '2026-07-13T12:00:00.000Z', '2026-07-13T12:00:00.000Z',
+                 '2026-07-13T12:00:00.000Z')`,
+    )
+    .run(id, sourceId, projectId, workspaceId, relativePath, title);
+}
+
 describe("SQLite memory repository", () => {
   test("creates a memory with an audit event and search projection", async () => {
     const database = createDatabase();
@@ -356,6 +400,154 @@ describe("SQLite memory repository", () => {
     await expect(
       repository.addRelation(memory.id, memory.id, "2026-07-13T12:01:00.000Z"),
     ).rejects.toBeInstanceOf(MemoryRelationError);
+
+    await queryDatabase.close();
+  });
+
+  test("resolves, links, lists, and unlinks a memory-to-work-item backlink", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteMemoryRepository(queryDatabase);
+
+    insertWorkItem(database, "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a40", PROJECT_ID, "Fix the bug");
+
+    const memory = createMemory({
+      content: "Root cause was a stale cache entry.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a41"),
+      now: "2026-07-13T12:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Bugfix root cause",
+      type: "bugfix",
+    });
+    await repository.create(memory);
+
+    const exactMatch = await repository.findWorkItemReference(
+      PROJECT_ID,
+      "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a40",
+    );
+    expect(exactMatch).toEqual([
+      {
+        id: "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a40",
+        status: "open",
+        title: "Fix the bug",
+        type: "task",
+      },
+    ]);
+
+    const prefixMatch = await repository.findWorkItemReference(
+      PROJECT_ID,
+      "018f4f32-95d6",
+    );
+    expect(prefixMatch).toHaveLength(1);
+
+    expect(
+      await repository.findWorkItemReference(OTHER_PROJECT_ID, "018f4f32-95d6"),
+    ).toHaveLength(0);
+
+    await repository.linkWorkItem(
+      memory.id,
+      "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a40",
+      "2026-07-13T12:05:00.000Z",
+    );
+    // Linking twice must stay idempotent.
+    await repository.linkWorkItem(
+      memory.id,
+      "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a40",
+      "2026-07-13T12:06:00.000Z",
+    );
+
+    const linked = await repository.listLinkedWorkItems(memory.id);
+    expect(linked).toEqual([
+      {
+        id: "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a40",
+        status: "open",
+        title: "Fix the bug",
+        type: "task",
+      },
+    ]);
+
+    await repository.unlinkWorkItem(memory.id, "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a40");
+    expect(await repository.listLinkedWorkItems(memory.id)).toHaveLength(0);
+
+    await queryDatabase.close();
+  });
+
+  test("resolves, links, lists, and unlinks a memory-to-context-document backlink", async () => {
+    const database = createDatabase();
+    const queryDatabase = new CairnQueryDatabase(database);
+    const repository = new SqliteMemoryRepository(queryDatabase);
+
+    insertContextDocument(
+      database,
+      "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a50",
+      PROJECT_ID,
+      "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a10",
+      "docs/architecture.md",
+      "Architecture",
+    );
+
+    const memory = createMemory({
+      content: "This documents why we split domains this way.",
+      id: MemoryId.from("018f4f32-95d6-7d6d-9f54-2d6d7a6d9a51"),
+      now: "2026-07-13T12:00:00.000Z",
+      projectId: PROJECT_ID,
+      scope: "project",
+      title: "Architecture rationale",
+      type: "architecture",
+    });
+    await repository.create(memory);
+
+    const byId = await repository.findContextDocumentReference(
+      PROJECT_ID,
+      "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a50",
+    );
+    expect(byId).toEqual([
+      {
+        id: "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a50",
+        relativePath: "docs/architecture.md",
+        title: "Architecture",
+      },
+    ]);
+
+    const byPath = await repository.findContextDocumentReference(
+      PROJECT_ID,
+      "docs/architecture.md",
+    );
+    expect(byPath).toEqual(byId);
+
+    expect(
+      await repository.findContextDocumentReference(
+        OTHER_PROJECT_ID,
+        "docs/architecture.md",
+      ),
+    ).toHaveLength(0);
+
+    await repository.linkContextDocument(
+      memory.id,
+      "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a50",
+      "2026-07-13T12:05:00.000Z",
+    );
+    await repository.linkContextDocument(
+      memory.id,
+      "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a50",
+      "2026-07-13T12:06:00.000Z",
+    );
+
+    const linked = await repository.listLinkedContextDocuments(memory.id);
+    expect(linked).toEqual([
+      {
+        id: "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a50",
+        relativePath: "docs/architecture.md",
+        title: "Architecture",
+      },
+    ]);
+
+    await repository.unlinkContextDocument(
+      memory.id,
+      "018f4f32-95d6-7d6d-9f54-2d6d7a6d9a50",
+    );
+    expect(await repository.listLinkedContextDocuments(memory.id)).toHaveLength(0);
 
     await queryDatabase.close();
   });

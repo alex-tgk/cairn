@@ -36,7 +36,7 @@ describe("Cairn SQLite storage", () => {
       foreignKeys: true,
       fts5: true,
       integrity: "ok",
-      schemaVersion: 8,
+      schemaVersion: 9,
     });
 
     database.close();
@@ -70,7 +70,7 @@ describe("Cairn SQLite storage", () => {
 
     const upgradedDatabase = openCairnDatabase(databasePath);
 
-    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(8);
+    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(9);
     expect(
       upgradedDatabase
         .query<{ name: string }, []>(
@@ -139,7 +139,7 @@ describe("Cairn SQLite storage", () => {
 
     const upgradedDatabase = openCairnDatabase(databasePath);
 
-    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(8);
+    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(9);
     expect(
       upgradedDatabase
         .query<{ notes: string; revision: number }, []>(
@@ -223,7 +223,7 @@ describe("Cairn SQLite storage", () => {
 
     const upgradedDatabase = openCairnDatabase(databasePath);
 
-    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(8);
+    expect(checkDatabaseHealth(upgradedDatabase).schemaVersion).toBe(9);
     expect(
       upgradedDatabase
         .query<{ name: string }, []>(
@@ -247,6 +247,24 @@ describe("Cairn SQLite storage", () => {
         .map(({ name }) => name),
     ).toEqual(["title", "body", "tags", "source_path"]);
     upgradedDatabase.close();
+  });
+
+  test("adds memory_work_links and memory_context_links with referential foreign keys", () => {
+    const database = openCairnDatabase(createDatabasePath());
+
+    expect(checkDatabaseHealth(database).schemaVersion).toBe(9);
+    const tableNames = database
+      .query<{ name: string }, []>(
+        `SELECT name FROM sqlite_schema
+         WHERE type = 'table'
+           AND name IN ('memory_work_links', 'memory_context_links')
+         ORDER BY name`,
+      )
+      .all()
+      .map(({ name }) => name);
+    expect(tableNames).toEqual(["memory_context_links", "memory_work_links"]);
+
+    database.close();
   });
 
   test("registers one logical project across multiple workspace paths", () => {
@@ -366,7 +384,7 @@ describe("Cairn SQLite storage", () => {
     seed.close();
 
     const upgraded = openCairnDatabase(databasePath);
-    expect(checkDatabaseHealth(upgraded).schemaVersion).toBe(8);
+    expect(checkDatabaseHealth(upgraded).schemaVersion).toBe(9);
 
     const reclassified = upgraded
       .query<

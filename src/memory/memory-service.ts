@@ -22,6 +22,25 @@ import {
 import type { MemoryFilter, MemoryRepository } from "./memory-repository.ts";
 import { SqliteMemoryRepository } from "./sqlite-memory-repository.ts";
 
+export type LinkedWorkItemView = Readonly<{
+  id: string;
+  status: string;
+  title: string;
+  type: string;
+}>;
+
+export type LinkedContextDocumentView = Readonly<{
+  id: string;
+  relativePath: string;
+  title: string;
+}>;
+
+export type MemoryDetailView = MemoryView &
+  Readonly<{
+    linkedContextDocuments: readonly LinkedContextDocumentView[];
+    linkedWorkItems: readonly LinkedWorkItemView[];
+  }>;
+
 export type MemoryView = Readonly<{
   ageDays: number;
   archived: boolean;
@@ -77,6 +96,16 @@ type ShowMemoryOptions = MemoryContextOptions &
 
 type RelateMemoryOptions = MemoryContextOptions &
   Readonly<{ id: string; now?: (() => string) | undefined; relatedId: string }>;
+
+type LinkWorkItemOptions = MemoryContextOptions &
+  Readonly<{ id: string; now?: (() => string) | undefined; workItemId: string }>;
+
+type LinkContextDocumentOptions = MemoryContextOptions &
+  Readonly<{
+    contextDocumentReference: string;
+    id: string;
+    now?: (() => string) | undefined;
+  }>;
 
 type TimelineMemoryOptions = MemoryContextOptions &
   StalenessOptions &
@@ -137,6 +166,48 @@ export class MemoryAmbiguousReferenceError extends Error {
     readonly candidateIds: readonly string[],
   ) {
     super(`Ambiguous memory reference: ${reference}`);
+  }
+}
+
+export class LinkedWorkItemNotFoundError extends Error {
+  readonly code = "work_item_not_found";
+  override readonly name = "LinkedWorkItemNotFoundError";
+
+  constructor(readonly reference: string) {
+    super(`Work item not found: ${reference}`);
+  }
+}
+
+export class LinkedWorkItemAmbiguousReferenceError extends Error {
+  readonly code = "ambiguous_work_item_reference";
+  override readonly name = "LinkedWorkItemAmbiguousReferenceError";
+
+  constructor(
+    readonly reference: string,
+    readonly candidateIds: readonly string[],
+  ) {
+    super(`Ambiguous work item reference: ${reference}`);
+  }
+}
+
+export class LinkedContextDocumentNotFoundError extends Error {
+  readonly code = "context_document_not_found";
+  override readonly name = "LinkedContextDocumentNotFoundError";
+
+  constructor(readonly reference: string) {
+    super(`Context document not found: ${reference}`);
+  }
+}
+
+export class LinkedContextDocumentAmbiguousReferenceError extends Error {
+  readonly code = "ambiguous_context_document_reference";
+  override readonly name = "LinkedContextDocumentAmbiguousReferenceError";
+
+  constructor(
+    readonly reference: string,
+    readonly candidateIds: readonly string[],
+  ) {
+    super(`Ambiguous context document reference: ${reference}`);
   }
 }
 
@@ -282,13 +353,62 @@ async function requireMemory(
   return memory;
 }
 
+async function requireLinkedWorkItem(
+  repository: MemoryRepository,
+  projectId: string,
+  reference: string,
+) {
+  const matches = await repository.findWorkItemReference(projectId, reference);
+  const workItem = matches[0];
+  if (!workItem) {
+    throw new LinkedWorkItemNotFoundError(reference);
+  }
+  if (matches.length > 1) {
+    throw new LinkedWorkItemAmbiguousReferenceError(
+      reference,
+      matches.map((match) => match.id),
+    );
+  }
+  return workItem;
+}
+
+async function requireLinkedContextDocument(
+  repository: MemoryRepository,
+  projectId: string,
+  reference: string,
+) {
+  const matches = await repository.findContextDocumentReference(
+    projectId,
+    reference,
+  );
+  const document = matches[0];
+  if (!document) {
+    throw new LinkedContextDocumentNotFoundError(reference);
+  }
+  if (matches.length > 1) {
+    throw new LinkedContextDocumentAmbiguousReferenceError(
+      reference,
+      matches.map((match) => match.id),
+    );
+  }
+  return document;
+}
+
 export async function showMemory(
   options: ShowMemoryOptions,
-): Promise<MemoryView> {
+): Promise<MemoryDetailView> {
   return withMemoryRepository(options, async (repository, projectId) => {
     const clock = resolveStalenessClock(options);
     const memory = await requireMemory(repository, projectId, options.id);
-    return toMemoryView(memory, clock);
+    const [linkedWorkItems, linkedContextDocuments] = await Promise.all([
+      repository.listLinkedWorkItems(memory.id),
+      repository.listLinkedContextDocuments(memory.id),
+    ]);
+    return {
+      ...toMemoryView(memory, clock),
+      linkedContextDocuments,
+      linkedWorkItems,
+    };
   });
 }
 
@@ -348,6 +468,84 @@ export async function listMemoryRelations(
     const memory = await requireMemory(repository, projectId, options.id);
     const related = await repository.listRelations(memory.id);
     return related.map((relatedMemory) => toMemoryView(relatedMemory, clock));
+  });
+}
+
+export async function linkMemoryToWorkItem(
+  options: LinkWorkItemOptions,
+): Promise<LinkedWorkItemView> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const now = (options.now ?? (() => new Date().toISOString()))();
+    const memory = await requireMemory(repository, projectId, options.id);
+    const workItem = await requireLinkedWorkItem(
+      repository,
+      projectId,
+      options.workItemId,
+    );
+    await repository.linkWorkItem(memory.id, workItem.id, now);
+    return workItem;
+  });
+}
+
+export async function unlinkMemoryFromWorkItem(
+  options: LinkWorkItemOptions,
+): Promise<void> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const memory = await requireMemory(repository, projectId, options.id);
+    const workItem = await requireLinkedWorkItem(
+      repository,
+      projectId,
+      options.workItemId,
+    );
+    await repository.unlinkWorkItem(memory.id, workItem.id);
+  });
+}
+
+export async function listMemoryLinkedWorkItems(
+  options: ShowMemoryOptions,
+): Promise<readonly LinkedWorkItemView[]> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const memory = await requireMemory(repository, projectId, options.id);
+    return repository.listLinkedWorkItems(memory.id);
+  });
+}
+
+export async function linkMemoryToContextDocument(
+  options: LinkContextDocumentOptions,
+): Promise<LinkedContextDocumentView> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const now = (options.now ?? (() => new Date().toISOString()))();
+    const memory = await requireMemory(repository, projectId, options.id);
+    const document = await requireLinkedContextDocument(
+      repository,
+      projectId,
+      options.contextDocumentReference,
+    );
+    await repository.linkContextDocument(memory.id, document.id, now);
+    return document;
+  });
+}
+
+export async function unlinkMemoryFromContextDocument(
+  options: LinkContextDocumentOptions,
+): Promise<void> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const memory = await requireMemory(repository, projectId, options.id);
+    const document = await requireLinkedContextDocument(
+      repository,
+      projectId,
+      options.contextDocumentReference,
+    );
+    await repository.unlinkContextDocument(memory.id, document.id);
+  });
+}
+
+export async function listMemoryLinkedContextDocuments(
+  options: ShowMemoryOptions,
+): Promise<readonly LinkedContextDocumentView[]> {
+  return withMemoryRepository(options, async (repository, projectId) => {
+    const memory = await requireMemory(repository, projectId, options.id);
+    return repository.listLinkedContextDocuments(memory.id);
   });
 }
 

@@ -22,12 +22,46 @@ import {
   type MemoryTransition,
 } from "./memory.ts";
 import type {
+  LinkedContextDocument,
+  LinkedWorkItem,
   MemoryFilter,
   MemoryRepository,
   MemoryTimeline,
 } from "./memory-repository.ts";
 
 type MemoryRow = Selectable<MemoryTable>;
+
+// Read-only lookups against work_items and context_documents: those tables
+// are owned by the work and context domains respectively, but Cairn's
+// domains share one physical database (see docs/architecture.md), so the
+// memory infrastructure adapter may read them directly to validate and
+// resolve backlink targets without importing work/context application code.
+// All writes for this feature stay confined to memory_work_links and
+// memory_context_links, which the memory domain owns.
+type LinkableWorkItemRow = Readonly<{
+  id: string;
+  status: string;
+  title: string;
+  type: string;
+}>;
+
+type LinkableContextDocumentRow = Readonly<{
+  id: string;
+  relative_path: string;
+  title: string;
+}>;
+
+const UUID_PREFIX_PATTERN = /^[0-9a-f-]+$/u;
+
+function mapLinkedWorkItem(row: LinkableWorkItemRow): LinkedWorkItem {
+  return { id: row.id, status: row.status, title: row.title, type: row.type };
+}
+
+function mapLinkedContextDocument(
+  row: LinkableContextDocumentRow,
+): LinkedContextDocument {
+  return { id: row.id, relativePath: row.relative_path, title: row.title };
+}
 
 function mapMemory(row: MemoryRow): Memory {
   return restoreMemory({
@@ -236,6 +270,133 @@ export class SqliteMemoryRepository implements MemoryRepository {
       .where("memory_id", "=", firstId)
       .where("related_memory_id", "=", secondId)
       .execute();
+  }
+
+  async findWorkItemReference(
+    projectId: string,
+    reference: string,
+  ): Promise<readonly LinkedWorkItem[]> {
+    const normalized = reference.trim().toLowerCase();
+    const exact = await sql<LinkableWorkItemRow>`
+      SELECT id, title, status, type
+      FROM work_items
+      WHERE project_id = ${projectId} AND id = ${normalized}
+    `.execute(this.database.queries);
+    if (exact.rows[0]) {
+      return [mapLinkedWorkItem(exact.rows[0])];
+    }
+
+    const hexadecimalLength = normalized.replaceAll("-", "").length;
+    if (hexadecimalLength < 6 || !UUID_PREFIX_PATTERN.test(normalized)) {
+      return [];
+    }
+
+    const matches = await sql<LinkableWorkItemRow>`
+      SELECT id, title, status, type
+      FROM work_items
+      WHERE project_id = ${projectId} AND id LIKE ${`${normalized}%`}
+      ORDER BY id ASC
+    `.execute(this.database.queries);
+    return matches.rows.map(mapLinkedWorkItem);
+  }
+
+  async linkWorkItem(
+    memoryId: MemoryId,
+    workItemId: string,
+    now: string,
+  ): Promise<void> {
+    await this.database.queries
+      .insertInto("memory_work_links")
+      .values({ created_at: now, memory_id: memoryId.toString(), work_item_id: workItemId })
+      .onConflict((oc) => oc.columns(["memory_id", "work_item_id"]).doNothing())
+      .execute();
+  }
+
+  async unlinkWorkItem(memoryId: MemoryId, workItemId: string): Promise<void> {
+    await this.database.queries
+      .deleteFrom("memory_work_links")
+      .where("memory_id", "=", memoryId.toString())
+      .where("work_item_id", "=", workItemId)
+      .execute();
+  }
+
+  async listLinkedWorkItems(memoryId: MemoryId): Promise<readonly LinkedWorkItem[]> {
+    const rows = await sql<LinkableWorkItemRow>`
+      SELECT work_items.id, work_items.title, work_items.status, work_items.type
+      FROM memory_work_links
+      JOIN work_items ON work_items.id = memory_work_links.work_item_id
+      WHERE memory_work_links.memory_id = ${memoryId.toString()}
+      ORDER BY work_items.id ASC
+    `.execute(this.database.queries);
+    return rows.rows.map(mapLinkedWorkItem);
+  }
+
+  async findContextDocumentReference(
+    projectId: string,
+    reference: string,
+  ): Promise<readonly LinkedContextDocument[]> {
+    const trimmed = reference.trim();
+    const exact = await sql<LinkableContextDocumentRow>`
+      SELECT id, relative_path, title
+      FROM context_documents
+      WHERE project_id = ${projectId} AND id = ${trimmed}
+    `.execute(this.database.queries);
+    if (exact.rows[0]) {
+      return [mapLinkedContextDocument(exact.rows[0])];
+    }
+
+    const byPath = await sql<LinkableContextDocumentRow>`
+      SELECT id, relative_path, title
+      FROM context_documents
+      WHERE project_id = ${projectId}
+        AND relative_path = ${trimmed}
+        AND active = 1
+      ORDER BY id ASC
+    `.execute(this.database.queries);
+    return byPath.rows.map(mapLinkedContextDocument);
+  }
+
+  async linkContextDocument(
+    memoryId: MemoryId,
+    contextDocumentId: string,
+    now: string,
+  ): Promise<void> {
+    await this.database.queries
+      .insertInto("memory_context_links")
+      .values({
+        context_document_id: contextDocumentId,
+        created_at: now,
+        memory_id: memoryId.toString(),
+      })
+      .onConflict((oc) =>
+        oc.columns(["memory_id", "context_document_id"]).doNothing(),
+      )
+      .execute();
+  }
+
+  async unlinkContextDocument(
+    memoryId: MemoryId,
+    contextDocumentId: string,
+  ): Promise<void> {
+    await this.database.queries
+      .deleteFrom("memory_context_links")
+      .where("memory_id", "=", memoryId.toString())
+      .where("context_document_id", "=", contextDocumentId)
+      .execute();
+  }
+
+  async listLinkedContextDocuments(
+    memoryId: MemoryId,
+  ): Promise<readonly LinkedContextDocument[]> {
+    const rows = await sql<LinkableContextDocumentRow>`
+      SELECT context_documents.id, context_documents.relative_path, context_documents.title
+      FROM memory_context_links
+      JOIN context_documents
+        ON context_documents.id = memory_context_links.context_document_id
+      WHERE memory_context_links.memory_id = ${memoryId.toString()}
+      ORDER BY context_documents.relative_path ASC
+    `.execute(this.database.queries);
+    return rows.rows.map(mapLinkedContextDocument);
   }
 
   async listRelations(memoryId: MemoryId): Promise<readonly Memory[]> {
