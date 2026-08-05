@@ -1,6 +1,6 @@
 # CoP Presenter Brief
 
-Hi {{HOST_NAME}},
+Hi AI Community of Practice,
 
 Thanks so much for inviting me to share with the AI Powered Engineering
 Community of Practice. I am looking forward to it.
