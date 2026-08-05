@@ -12,6 +12,12 @@ Start with the product boundary, then follow the architecture and roadmap into i
 | [Distribution](distribution.md) | Defines binaries, CI, releases, and Homebrew delivery. |
 | [Project state](project-state.md) | Gives every agent the current implementation handoff. |
 
+## Presentation
+
+| Document | Purpose |
+| --- | --- |
+| [CoP presentation materials](presentation/README.md) | Presenter brief, slide deck, preparation notes, and Marp theme for Alex Carroll's AI Powered Engineering Community of Practice talk. |
+
 ## Decision records
 
 | ADR | Status | Decision |

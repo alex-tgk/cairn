@@ -144,7 +144,7 @@ Validate release artifacts on supported platforms, add signing and checksums, cr
 Ideas that have not been promoted into a slice above are tracked as Cairn
 work items under the `Triage talk-prep context-efficiency feature ideas`
 epic (`cairn work show 31d034d6 --json`), sourced from
-[talk-notes-context-efficiency.md](talk-notes-context-efficiency.md):
+[presentation/cairn-cop-talk-notes.md](presentation/cairn-cop-talk-notes.md):
 
 - Memory staleness/decay signal (needs an ADR amendment to ADR 0010 before
   implementation)

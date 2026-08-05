@@ -7,9 +7,9 @@
 > `docs/roadmap.md`), not committed roadmap items — triage before promoting
 > anything here into `roadmap.md` or a new ADR.
 
-See [talk-build-your-own-vs-cairn-slides.md](talk-build-your-own-vs-cairn-slides.md)
+See [cairn-cop-talk-slides.md](cairn-cop-talk-slides.md)
 for the current slide deck (Marp-formatted markdown; render with
-`npx @marp-team/marp-cli talk-build-your-own-vs-cairn-slides.md --theme-set docs/assets/cairn-talk-theme.css --html -o slides.html`
+`npx @marp-team/marp-cli docs/presentation/cairn-cop-talk-slides.md --theme-set docs/presentation/cairn-talk-theme.css --html -o docs/presentation/cairn-cop-talk-slides.html`
 or the Marp VS Code extension). The deck's narrative diverged from these
 notes — it now walks through building a local agent-memory system by hand
 before introducing Cairn as the alternative — but the staleness/token-
